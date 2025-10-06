@@ -6,22 +6,24 @@
 import gymnasium as gym
 
 from . import agents
+from . import environments
 
 ##
 # Register Gym environments.
 ##
 
-
 gym.register(
-    id="Template-Isaaclab-Ransv2-Direct-v0",
-    entry_point=f"{__name__}.isaaclab_ransv2_env:IsaaclabRansv2Env",
+    id="Isaaclab-RANSv2-AutoEnvGen-v0",
+    entry_point=f"{environments.__name__}.auto_env_gen:AutoEnvGen",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.isaaclab_ransv2_env_cfg:IsaaclabRansv2EnvCfg",
+        "env_cfg_entry_point": f"{environments.__name__}.auto_env_gen_cfg:AutoEnvGenCfg",
         "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+        "rl_games_ppo-discrete_cfg_entry_point": f"{agents.__name__}:rl_games_ppo-discrete_cfg.yaml",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_cfg.yaml",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+        "skrl_ppo-discrete_cfg_entry_point": f"{agents.__name__}:skrl_ppo-discrete_cfg.yaml",
         "sb3_cfg_entry_point": f"{agents.__name__}:sb3_ppo_cfg.yaml",
     },
 )

@@ -30,8 +30,8 @@ parser.add_argument(
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
-parser.add_argument("--wandb-project-name", type=str, default=None, help="the wandb's project name")
-parser.add_argument("--wandb-entity", type=str, default=None, help="the entity (team) of wandb's project")
+parser.add_argument("--wandb-project-name", type=str, default="AutoEnvGen", help="the wandb's project name")
+parser.add_argument("--wandb-entity", type=str, default="spacer-rl", help="the entity (team) of wandb's project")
 parser.add_argument("--wandb-name", type=str, default=None, help="the name of wandb's run")
 parser.add_argument(
     "--track",
@@ -42,6 +42,13 @@ parser.add_argument(
     help="if toggled, this experiment will be tracked with Weights and Biases",
 )
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
+parser.add_argument(
+    "--algorithm",
+    type=str,
+    default="PPO",
+    # choices=["PPO", "IPPO", "MAPPO"],
+    help="The RL algorithm used for training the rl_games agent.",
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -88,6 +95,8 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import Isaaclab_RANSv2.tasks  # noqa: F401
 
+algorithm = args_cli.algorithm.lower()
+agent_cfg_entry_point = "rl_games_cfg_entry_point" if algorithm in ["ppo"] else f"rl_games_{algorithm}_cfg_entry_point"
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
@@ -124,9 +133,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg["params"]["seed"]
 
+    # create isaac environment
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
     # specify directory for logging experiments
-    config_name = agent_cfg["params"]["config"]["name"]
-    log_root_path = os.path.join("logs", "rl_games", config_name)
+    if "AutoEnvGen" in args_cli.task:
+        print(f"Using entity: {args_cli.task}")
+        agent_cfg["params"]["config"]["name"] = env.env.cfg.robot_name + "-" + env.env.cfg.task_name
+        print(f'Using project: {agent_cfg["params"]["config"]["name"]}')
+        log_root_path = os.path.join(
+            "logs", "rl_games", args_cli.task.split("-")[2], agent_cfg["params"]["config"]["name"]
+        )
+        config_name = agent_cfg["params"]["wandb"]["project"]
+    else:
+        config_name = agent_cfg["params"]["config"]["name"]
+        log_root_path = os.path.join("logs", "rl_games", config_name)
     if "pbt" in agent_cfg:
         if agent_cfg["pbt"]["directory"] == ".":
             log_root_path = os.path.abspath(log_root_path)
@@ -165,10 +186,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         )
 
     # set the log directory for the environment (works for all environment types)
-    env_cfg.log_dir = log_dir
+    # env_cfg.log_dir = log_dir
 
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -214,17 +233,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     global_rank = int(os.getenv("RANK", "0"))
     if args_cli.track and global_rank == 0:
+
         if args_cli.wandb_entity is None:
             raise ValueError("Weights and Biases entity must be specified for tracking.")
         import wandb
 
+        group_name = ""
+        date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        if "AutoEnvGen" in args_cli.task:
+            name = agent_cfg["params"]["config"]["name"]
+            agent_cfg["params"]["wandb"]["project"] = args_cli.wandb_project_name
+            agent_cfg["params"]["wandb"]["entity"] = args_cli.wandb_entity
+            experiment_name = f"{date_str}_{name}_{algorithm}_rlgames" + "_seed_" + str(args_cli.seed)
+            wandb_project = agent_cfg["params"]["wandb"]["project"]
+            args_cli.wandb_entity = agent_cfg["params"]["wandb"]["entity"]
+            group_name = agent_cfg["params"]["wandb"]["group"]
+
+
         wandb.init(
             project=wandb_project,
             entity=args_cli.wandb_entity,
+            group=group_name,
+            config=agent_cfg,
             name=experiment_name,
             sync_tensorboard=True,
             monitor_gym=True,
             save_code=True,
+            resume="allow",
         )
         if not wandb.run.resumed:
             wandb.config.update({"env_cfg": env_cfg.to_dict()})

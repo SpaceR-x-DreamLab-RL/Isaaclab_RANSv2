@@ -4,19 +4,19 @@ params:
   # environment wrapper clipping
   env:
     # added to the wrapper
-    clip_observations: 5.0
+    clip_observations: 25.0
     # can make custom wrapper?
     clip_actions: 1.0
 
   algo:
-    name: a2c_continuous
+    name: a2c_discrete
 
   model:
-    name: continuous_a2c_logstd
+    name: multi_discrete_a2c
 
   wandb:
     enabled: True
-    project: AutoEnvGen
+    project: single
     entity: spacer-rl
     group: 'zeroG'
     notes: ''
@@ -24,9 +24,9 @@ params:
   # doesn't have this fine grained control but made it close
   network:
     name: actor_critic
-    separate: False
+    separate: True
     space:
-      continuous:
+      multi_discrete:
         mu_activation: None
         sigma_activation: None
 
@@ -37,8 +37,8 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [32, 32]
-      activation: elu
+      units: [64, 64]
+      activation: tanh
       d2rl: False
 
       initializer:
@@ -50,7 +50,7 @@ params:
   load_path: '' # path to the checkpoint to load
 
   config:
-    name: AutoEnvGen
+    name: single
     env_name: rlgpu
     device: 'cuda:0'
     device_name: 'cuda:0'
@@ -67,11 +67,11 @@ params:
     tau : 0.95
     learning_rate: 5e-4
     lr_schedule: adaptive
-    kl_threshold: 0.008
+    kl_threshold: 0.016
     score_to_win: 20000
-    max_epochs: 150
+    max_epochs: 1000
     save_best_after: 50
-    save_frequency: 25
+    save_frequency: 50
     grad_norm: 1.0
     entropy_coef: 0.0
     truncate_grads: True
@@ -79,7 +79,7 @@ params:
     horizon_length: 32
     minibatch_size: 16384
     mini_epochs: 8
-    critic_coef: 4
+    critic_coef: 2.0
     clip_value: True
     seq_length: 4
     bounds_loss_coef: 0.0001

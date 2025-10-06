@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -26,17 +26,7 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument(
-    "--agent",
-    type=str,
-    default=None,
-    help=(
-        "Name of the RL agent configuration entry point. Defaults to None, in which case the argument "
-        "--algorithm is used to determine the default agent configuration entry point."
-    ),
-)
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -53,14 +43,13 @@ parser.add_argument(
     "--algorithm",
     type=str,
     default="PPO",
-    choices=["AMP", "PPO", "IPPO", "MAPPO"],
+    # choices=["AMP", "PPO", "IPPO", "MAPPO"],
     help="The RL algorithm used for training the skrl agent.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
-# parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
 if args_cli.video:
@@ -68,6 +57,7 @@ if args_cli.video:
 
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
+
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -76,7 +66,6 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import os
-import random
 import time
 import torch
 
@@ -113,47 +102,46 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-import Isaaclab_RANSv2.tasks  # noqa: F401
-
 # config shortcuts
-if args_cli.agent is None:
-    algorithm = args_cli.algorithm.lower()
-    agent_cfg_entry_point = "skrl_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_{algorithm}_cfg_entry_point"
-else:
-    agent_cfg_entry_point = args_cli.agent
+algorithm = args_cli.algorithm.lower()
+agent_cfg_entry_point = "skrl_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_{algorithm}_cfg_entry_point"
 
 
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, experiment_cfg: dict):
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Play with skrl agent."""
-    # grab task name for checkpoint path
-    task_name = args_cli.task.split(":")[-1]
-    train_task_name = task_name.replace("-Play", "")
-
-    # override configurations with non-hydra CLI arguments
-    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):
         skrl.config.jax.backend = "jax" if args_cli.ml_framework == "jax" else "numpy"
 
-        # randomly sample a seed if seed = -1
-    if args_cli.seed == -1:
-        args_cli.seed = random.randint(0, 10000)
+    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
 
-    # set the agent and environment seed from command line
-    # note: certain randomization occur in the environment initialization so we set the seed here
-    experiment_cfg["seed"] = args_cli.seed if args_cli.seed is not None else experiment_cfg["seed"]
-    env_cfg.seed = experiment_cfg["seed"]
+    experiment_cfg = agent_cfg
+
+    # create isaac environment
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
+    # convert to single-agent instance if required by the RL algorithm
+    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
+        env = multi_agent_to_single_agent(env)
 
     # specify directory for logging experiments (load checkpoint)
-    log_root_path = os.path.join("logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"])
+    if "wandb" in experiment_cfg["agent"]["experiment"]:
+        experiment_cfg["agent"]["experiment"]["wandb"] = False
+    if "Single" in args_cli.task:
+        experiment_cfg["agent"]["experiment"]["directory"] = "Single"
+        experiment_cfg["agent"]["experiment"]["experiment_name"] = env.env.cfg.robot_name + "-" + env.env.cfg.task_name
+        log_root_path = os.path.join("logs", "skrl", args_cli.task.split("-")[2])
+    else:
+        experiment_cfg["agent"]["experiment"]["experiment_name"] = args_cli.task.split("-")[2]
+        log_root_path = os.path.join("logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"])
+    # log_root_path = os.path.join("logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"])
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     # get checkpoint path
     if args_cli.use_pretrained_checkpoint:
-        resume_path = get_published_pretrained_checkpoint("skrl", train_task_name)
+        resume_path = get_published_pretrained_checkpoint("skrl", args_cli.task)
         if not resume_path:
             print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
             return
@@ -165,21 +153,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         )
     log_dir = os.path.dirname(os.path.dirname(resume_path))
 
-    # set the log directory for the environment (works for all environment types)
-    env_cfg.log_dir = log_dir
-
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
-        env = multi_agent_to_single_agent(env)
-
-    # get environment (step) dt for real-time evaluation
+    # get environment (physics) dt for real-time evaluation
     try:
-        dt = env.step_dt
+        dt = env.physics_dt
     except AttributeError:
-        dt = env.unwrapped.step_dt
+        dt = env.unwrapped.physics_dt
 
     # wrap for video recording
     if args_cli.video:
