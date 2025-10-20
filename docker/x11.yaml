@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 services:
-  isaac-lab-base:
+  isaac-lab-ransv2-base:
     environment:
       - DISPLAY
       - TERM

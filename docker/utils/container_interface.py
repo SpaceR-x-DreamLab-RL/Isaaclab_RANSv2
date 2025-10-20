@@ -20,7 +20,7 @@ class ContainerInterface:
     def __init__(
         self,
         context_dir: Path,
-        profile: str = "ransv2",
+        profile: str = "base",
         yamls: list[str] | None = None,
         envs: list[str] | None = None,
         statefile: StateFile | None = None,
@@ -129,7 +129,7 @@ class ContainerInterface:
                     "--file",
                     "docker-compose.yaml",
                     "--env-file",
-                    ".env",
+                    ".env.base",
                     "build",
                     "isaac-lab-base",
                 ],
@@ -278,7 +278,7 @@ class ContainerInterface:
         """
         self.add_yamls = ["--file", "docker-compose.yaml"]
         self.add_profiles = ["--profile", f"{self.profile}"]
-        self.add_env_files = ["--env-file", ".env"]
+        self.add_env_files = ["--env-file", ".env.base"]
 
         # extend env file based on profile
         if self.profile != "base":
