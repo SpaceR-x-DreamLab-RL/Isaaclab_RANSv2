@@ -1,0 +1,2 @@
+COMPOSE_BAKE=true docker compose -f docker/docker-compose.yaml --env-file docker/.env --profile base build
+COMPOSE_BAKE=true docker compose -f docker/docker-compose.yaml --env-file docker/.env --profile base up -d --remove-orphans
