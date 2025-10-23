@@ -1,5 +1,11 @@
 # Template for Isaac Lab Projects
 
+```
+./Isaaclab_RANSv2/.docker/build.bash
+./Isaaclab_RANSv2/.docker/run.bash
+${ISAAC_SIM_PYTHON} scripts/teleop_rans_robots/teleop.py --task=Isaaclab-RANSv2-AutoEnvGen-v0
+```
+
 ## Overview
 
 This project/repository serves as a template for building projects or extensions based on Isaac Lab.

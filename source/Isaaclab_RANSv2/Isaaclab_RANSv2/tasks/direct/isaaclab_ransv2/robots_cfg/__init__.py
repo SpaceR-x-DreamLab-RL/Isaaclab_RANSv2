@@ -14,6 +14,7 @@ from .modular_freeflyer_cfg import ModularFreeflyerRobotCfg  # noqa: F401, F403
 from .kingfisher_cfg import KingfisherRobotCfg  # noqa: F401, F403
 from .turtlebot2_cfg import TurtleBot2RobotCfg  # noqa: F401, F403
 from .intball2_cfg import IntBall2RobotCfg  # noqa: F401, F403
+from .pingu_cfg import PinguRobotCfg  # noqa: F401, F403
 
 from ..utils.misc import factory
 
@@ -25,3 +26,4 @@ ROBOT_CFG_FACTORY.register("ModularFreeflyer", ModularFreeflyerRobotCfg)
 ROBOT_CFG_FACTORY.register("Kingfisher", KingfisherRobotCfg)
 ROBOT_CFG_FACTORY.register("Turtlebot2", TurtleBot2RobotCfg)
 ROBOT_CFG_FACTORY.register("IntBall2", IntBall2RobotCfg)
+ROBOT_CFG_FACTORY.register("Pingu", PinguRobotCfg)

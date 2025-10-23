@@ -10,7 +10,7 @@ class AutoEnvGenCfg(DirectRLEnvCfg):
     decimation = 6
     episode_length_s = 20.0
 
-    robot_name = "Jetbot"
+    robot_name = "Pingu"
     task_name = "GoToPose"
 
     # scene

@@ -1,3 +1,19 @@
 [build-system]
 requires = ["setuptools", "wheel", "toml"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "Isaaclab_RANSv2"
+version = "0.1.0"
+description = "Extension for Isaac Lab providing RANSv2 functionalities."
+authors = [{name = "SpaceR & Dream Lab"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["robotics", "simulation"]
+requires-python = "==3.11.*"
+
+dependencies = [
+    "numpy>=1.20",
+    "scipy",
+    # Add all other required packages here
+]
