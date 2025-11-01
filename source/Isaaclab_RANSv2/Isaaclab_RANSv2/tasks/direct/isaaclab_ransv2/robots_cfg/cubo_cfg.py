@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots.pingu import PINGU_CFG
+from isaaclab_assets.robots.cubo import CUBO_CFG
 
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors import ContactSensorCfg
@@ -21,13 +21,13 @@ from .robot_core_cfg import RobotCoreCfg
 
 
 @configclass
-class PinguRobotCfg(RobotCoreCfg):
+class CuboRobotCfg(RobotCoreCfg):
     """Core configuration for a RANS task."""
 
-    robot_name: str = "Pingu"
+    robot_name: str = "Cubo"
 
-    robot_cfg: ArticulationCfg = PINGU_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    marker_height = 0.9
+    robot_cfg: ArticulationCfg = CUBO_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    marker_height = 0.75
     has_reaction_wheel = False
     num_thrusters = 8
 

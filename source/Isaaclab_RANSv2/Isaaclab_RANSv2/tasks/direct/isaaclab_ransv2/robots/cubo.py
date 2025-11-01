@@ -11,17 +11,17 @@ from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils import math as math_utils
 
-from ..robots_cfg import PinguRobotCfg
+from ..robots_cfg import CuboRobotCfg
 
 from .robot_core import RobotCore
 
 
-class PinguRobot(RobotCore):
+class CuboRobot(RobotCore):
 
     def __init__(
         self,
         scene: InteractiveScene | None = None,
-        robot_cfg: PinguRobotCfg = PinguRobotCfg(),
+        robot_cfg: CuboRobotCfg = CuboRobotCfg(),
         robot_uid: int = 0,
         num_envs: int = 1,
         decimation: int = 6,
@@ -106,7 +106,7 @@ class PinguRobot(RobotCore):
         # self._robot.set_external_force_and_torque(
         #    thrust_reset, thrust_reset, body_ids=self._thrusters_dof_idx, env_ids=env_ids
         # )
-        locking_joints = torch.zeros((len(env_ids), 8), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
+        locking_joints = torch.zeros((len(env_ids), 4), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', ]]
         self._robot.set_joint_velocity_target(locking_joints, env_ids=env_ids)
         self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
 
@@ -196,8 +196,8 @@ class PinguRobot(RobotCore):
         env_ids: torch.Tensor | None = None,
     ) -> None:
         # Arms and reaction wheel
-        arms_rw_vel = torch.zeros((env_ids.shape[0], 5), device=self._device)
-        velocity = torch.cat([velocity[:, :2], velocity[:, -1].unsqueeze(-1), arms_rw_vel], dim=1)
+        rw_vel = torch.zeros((env_ids.shape[0], 1), device=self._device)
+        velocity = torch.cat([velocity[:, :2], velocity[:, -1].unsqueeze(-1), rw_vel], dim=1)
         position = torch.zeros_like(velocity)
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 

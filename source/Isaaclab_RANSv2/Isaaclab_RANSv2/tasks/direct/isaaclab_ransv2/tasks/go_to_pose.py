@@ -342,8 +342,8 @@ class GoToPoseTask(TaskCore):
             + self._target_headings[env_ids]
             + math.pi
         )
-        initial_pose[:, 0] = r * torch.cos(theta) + self._target_positions[env_ids, 0]
-        initial_pose[:, 1] = r * torch.sin(theta) + self._target_positions[env_ids, 1]
+        # initial_pose[:, 0] = r * torch.cos(theta) + self._target_positions[env_ids, 0]
+        # initial_pose[:, 1] = r * torch.sin(theta) + self._target_positions[env_ids, 1]
         initial_pose[:, 2] = self._robot_origins[env_ids, 2]
 
         # Orientation

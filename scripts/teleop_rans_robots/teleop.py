@@ -176,41 +176,59 @@ def main() -> None:
                 action = torch.tensor([[0, 0]], device=action.device)
 
             return action
-        elif robot_name == "Pingu":
-            action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
+        elif robot_name == "Cubo":
+            new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
             if action[0] > 0:  # forward
-                action += torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
-            if action[0] < 0:  # backward
-                action += torch.tensor([[-1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
-            if action[1] > 0:  # left
-                action += torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0]], device=action.device)
-            if action[1] < 0:  # right
-                action += torch.tensor([[0, -1, 0, 0, 0, 0, 0, 0]], device=action.device)
-            if action[2] > 0:  # rotate cw
-                action += torch.tensor([[0, 0, 1, 0, 0, 0, 0, 0]], device=action.device)
-            if action[2] < 0:  # rotate ccw
-                action += torch.tensor([[0, 0, -1, 0, 0, 0, 0, 0]], device=action.device)
-            if action[3] > 0:  # left shoulder
-                action += torch.tensor([[0, 0, 0, 1, 0, 0, 0, 0]], device=action.device)
-            if action[3] < 0:  # left shoulder
-                action += torch.tensor([[0, 0, 0, -1, 0, 0, 0, 0]], device=action.device)
-            if action[4] > 0:  # left elbow
-                action += torch.tensor([[0, 0, 0, 0, 1, 0, 0, 0]], device=action.device)
-            if action[4] < 0:  # left elbow
-                action += torch.tensor([[0, 0, 0, 0, -1, 0, 0, 0]], device=action.device)
-            if action[5] > 0:  # right shoulder
-                action += torch.tensor([[0, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
-            if action[5] < 0:  # right shoulder
-                action += torch.tensor([[0, 0, 0, 0, 0, -1, 0, 0]], device=action.device)
-            if action[6] > 0:  # right elbow
-                action += torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
-            if action[6] < 0:  # right elbow
-                action += torch.tensor([[0, 0, 0, 0, 0, 0, -1, 0]], device=action.device)
-            if action[7] > 0:  # reaction wheel cw
-                action += torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
-            if action[7] < 0:  # reaction wheel ccw
-                action += torch.tensor([[0, 0, 0, 0, 0, 0, 0, -1]], device=action.device)
-            return action
+                print("Mapping forward action")
+                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
+                new_action = torch.tensor([[0, 0, 0, 1, 0, 0, 1, 0]], device=action.device)
+            elif action[0] < 0:  # backward
+                print("Mapping backward action")
+                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
+                new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 1]], device=action.device)
+            elif action[1] > 0:  # left
+                print("Mapping left action")
+                new_action = torch.tensor([[0, 1, 0, 0, 1, 0, 0, 0]], device=action.device)
+            elif action[1] < 0:  # right
+                print("Mapping right action")
+                new_action = torch.tensor([[1, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
+            elif action[2] > 0:  # rotate cw
+                print("Mapping rotate cw action")
+                new_action = torch.tensor([[0, 1, 0, 1, 0, 1, 0, 1]], device=action.device)
+            elif action[2] < 0:  # rotate ccw
+                print("Mapping rotate ccw action")
+                new_action = torch.tensor([[1, 0, 1, 0, 1, 0, 1, 0]], device=action.device)
+            else:
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+
+            return new_action
+
+        elif robot_name == "Pingu":
+            new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
+            if action[0] > 0:  # forward
+                print("Mapping forward action")
+                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
+                new_action = torch.tensor([[0, 0, 0, 1, 0, 0, 1, 0]], device=action.device)
+            elif action[0] < 0:  # backward
+                print("Mapping backward action")
+                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
+                new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 1]], device=action.device)
+            elif action[1] > 0:  # left
+                print("Mapping left action")
+                new_action = torch.tensor([[0, 1, 0, 0, 1, 0, 0, 0]], device=action.device)
+            elif action[1] < 0:  # right
+                print("Mapping right action")
+                new_action = torch.tensor([[1, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
+            elif action[2] > 0:  # rotate cw
+                print("Mapping rotate cw action")
+                new_action = torch.tensor([[0, 1, 0, 1, 0, 1, 0, 1]], device=action.device)
+            elif action[2] < 0:  # rotate ccw
+                print("Mapping rotate ccw action")
+                new_action = torch.tensor([[1, 0, 1, 0, 1, 0, 1, 0]], device=action.device)
+            else:
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+
+            return new_action
         else:
             omni.log.warn(f"Unknown robot '{robot_name}'. Using default action mapping.")
             return action
@@ -293,7 +311,8 @@ def main() -> None:
             # run everything in inference mode
             with torch.inference_mode():
                 # get device command
-                action = teleop_interface.advance() # [x, y, z, rx, ry, rz, G] G = gripper (+1.0 for open, -1.0 for close)
+                action = teleop_interface.advance() # [x, y, z, rx, ry, rz, G] G = gripper (+1.0 for open, -1.0 for close) 
+                action[-1] = 0.0
 
                 action = map_action_to_robot(action, env.robot_cfg.robot_name)
                 # Only apply teleop commands when active
@@ -308,7 +327,7 @@ def main() -> None:
                 if should_reset_recording_instance:
                     env.reset()
                     should_reset_recording_instance = False
-                    print("Environment reset complete")
+                    
         except Exception as e:
             omni.log.error(f"Error during simulation step: {e}")
             break

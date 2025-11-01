@@ -13,6 +13,7 @@ from .leatherback import LeatherbackRobot
 from .modular_freeflyer import ModularFreeflyerRobot
 from .robot_core import RobotCore
 from .turtlebot2 import TurtleBot2Robot
+from .cubo import CuboRobot
 from .pingu import PinguRobot
 
 ROBOT_FACTORY = factory()
@@ -23,4 +24,5 @@ ROBOT_FACTORY.register("ModularFreeflyer", ModularFreeflyerRobot)
 ROBOT_FACTORY.register("Kingfisher", KingfisherRobot)
 ROBOT_FACTORY.register("Turtlebot2", TurtleBot2Robot)
 ROBOT_FACTORY.register("IntBall2", IntBall2Robot)
+ROBOT_FACTORY.register("Cubo", CuboRobot)
 ROBOT_FACTORY.register("Pingu", PinguRobot)
