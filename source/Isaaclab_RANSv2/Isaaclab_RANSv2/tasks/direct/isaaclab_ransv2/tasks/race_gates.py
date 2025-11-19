@@ -9,11 +9,15 @@ import torch
 from isaaclab.markers import BICOLOR_DIAMOND_CFG, GATE_2D_CFG, VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 from isaaclab.utils.math import sample_random_sign
+from isaaclab.markers.config import TRACK_CFG
+import numpy as np
 
 from ..tasks_cfg import RaceGatesCfg
 from ..utils import PerEnvSeededRNG, TrackGenerator
 
 from .task_core import TaskCore
+
+import torch.nn.functional as F
 
 EPS = 1e-6  # small constant to avoid divisions by 0 and log(0)
 
@@ -31,6 +35,7 @@ class RaceGatesTask(TaskCore):
         num_envs: int = 1,
         device: str = "cuda",
         env_ids: torch.Tensor | None = None,
+        decimation: int = 1,
     ) -> None:
         """
         Initializes the GoThroughPoses task.
@@ -43,7 +48,9 @@ class RaceGatesTask(TaskCore):
             task_id: The id of the task.
             env_ids: The ids of the environments used by this task."""
 
-        super().__init__(scene=scene, task_uid=task_uid, num_envs=num_envs, device=device, env_ids=env_ids)
+        super().__init__(
+            scene=scene, task_uid=task_uid, num_envs=num_envs, device=device, env_ids=env_ids, decimation=decimation, num_tasks=num_tasks
+        )
 
         # Task and reward parameters
         self._task_cfg = task_cfg
@@ -61,15 +68,136 @@ class RaceGatesTask(TaskCore):
             edgy=self._task_cfg.edgy,
             max_num_points=self._task_cfg.max_num_corners,
             min_num_points=self._task_cfg.min_num_corners,
+            min_point_distance= self._task_cfg.min_point_distance,
             rng=self._track_rng,
         )
+        self.num_generations = 0
 
         # Defines the observation and actions space sizes for this task
         self._dim_task_obs = self._task_cfg.observation_space
         self._dim_gen_act = self._task_cfg.gen_space
 
         # Buffers
-        self.initialize_buffers()
+        self.initialize_buffers(env_ids=env_ids)
+
+    @property
+    def eval_data_keys(self) -> list[str]:
+        """
+        Returns the keys of the data used for evaluation.
+
+        Returns:
+            list[str]: The keys of the data used for evaluation."""
+        
+        return [
+                "target_positions", 
+                "target_headings", 
+                "target_rotations", 
+                "previous_is_before_gate", 
+                "previous_is_after_gate", 
+                "target_index", 
+                "num_goals",
+                "trajectory_completed",
+                "position_distance",
+                "cos_heading_to_target_error",
+                "sin_heading_to_target_error",
+                "cos_target_heading_error",
+                "sin_target_heading_error",
+                "subsequent_goals_distance",
+                "cos_heading_to_subsequent_goals_error",
+                "sin_heading_to_subsequent_goals_error",
+                "cos_target_heading_to_subsequent_goals_error",
+                "sin_target_heading_to_subsequent_goals_error",
+                "missed_gate",
+            ]
+    
+    @property
+    def eval_data_specs(self)->dict[str, list[str]]:
+        return {
+            "target_positions": [coord for i in range(self._task_cfg.max_num_corners) for coord in (f".x_{i}.m", f".y_{i}.m")],
+            "target_headings": [f".target_heading_{i}.rad" for i in self._task_cfg.max_num_corners],
+            "target_rotations": [rot_matx_comp for i in range(self._task_cfg.max_num_corners) for rot_matx_comp in (f".target_rot_matx_r0_c0_{i}.m", f".target_rot_maty_r0_c1_{i}.m", f".target_rot_matx_r1_c0_{i}.m", f".target_rot_matx_r1_c1_{i}.m")],
+            "previous_is_before_gate": [".u"],
+            "previous_is_after_gate": [".u"],
+            "target_index": [".u"],
+            "num_goals": [".u"],
+            "trajectory_completed": [".u"],
+            "position_distance": [".distance.m"],
+            "cos_heading_to_target_error": [".cos(heading).u"],
+            "sin_heading_to_target_error": [".sin(heading).u"],
+            "cos_target_heading_error": [".cos(target_heading_error).u"],
+            "sin_target_heading_error": [".sin(target_heading_error).u"],
+            "subsequent_goals_distance": [f".distance_sub_goal_{i}.m" for i in range(self._task_cfg.max_num_corners - 1)],
+            "cos_heading_to_subsequent_goals_error": [f".cos(heading)_sub_goal_{i}.u" for i in range(self._task_cfg.max_num_corners - 1)],
+            "sin_heading_to_subsequent_goals_error": [f".sin(heading)_sub_goal_{i}.u" for i in range(self._task_cfg.max_num_corners - 1)],
+            "cos_target_heading_to_subsequent_goals_error": [f".cos(target_heading)_sub_goal_{i}.u" for i in range(self._task_cfg.max_num_corners - 1)],
+            "sin_target_heading_to_subsequent_goals_error": [f".sin(target_heading)_sub_goal_{i}.u" for i in range(self._task_cfg.max_num_corners - 1)],
+            "missed_gate": [".u"],
+        }
+
+    @property
+    def eval_data(self) -> dict:
+        """
+        Returns the data used for evaluation.
+
+        Returns:
+            dict: The data used for evaluation."""
+        
+        subsequent_goals_distance = []
+        cos_heading_to_subsequent_goals_error = []
+        sin_heading_to_subsequent_goals_error = []
+        cos_target_heading_to_subsequent_goals_error = []
+        sin_target_heading_to_subsequent_goals_error = []
+
+        for i in range(self._task_cfg.num_subsequent_goals - 1):
+            subsequent_goals_distance.append(self._task_data[:, 8 + 5 * i])
+            cos_heading_to_subsequent_goals_error.append(self._task_data[:, 9 + 5 * i])
+            sin_heading_to_subsequent_goals_error.append(self._task_data[:, 10 + 5 * i])
+            cos_target_heading_to_subsequent_goals_error.append(self._task_data[:, 11 + 5 * i])
+            sin_target_heading_to_subsequent_goals_error.append(self._task_data[:, 12 + 5 * i])
+
+        subsequent_goals_distance = torch.stack(subsequent_goals_distance, dim=-1)
+        cos_heading_to_subsequent_goals_error = torch.stack(cos_heading_to_subsequent_goals_error, dim=-1)
+        sin_heading_to_subsequent_goals_error = torch.stack(sin_heading_to_subsequent_goals_error, dim=-1)
+        cos_target_heading_to_subsequent_goals_error = torch.stack(cos_target_heading_to_subsequent_goals_error, dim=-1)
+        sin_target_heading_to_subsequent_goals_error = torch.stack(sin_target_heading_to_subsequent_goals_error, dim=-1)
+
+        reshaped_subsequent_goals_distance = subsequent_goals_distance.view(
+            subsequent_goals_distance.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(subsequent_goals_distance.shape)
+        reshaped_cos_heading_to_subsequent_goals_error = cos_heading_to_subsequent_goals_error.view(
+            cos_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(cos_heading_to_subsequent_goals_error.shape)
+        reshaped_sin_heading_to_subsequent_goals_error = sin_heading_to_subsequent_goals_error.view(
+            sin_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(sin_heading_to_subsequent_goals_error.shape)
+        reshaped_cos_target_heading_to_subsequent_goals_error = cos_target_heading_to_subsequent_goals_error.view(
+            cos_target_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(cos_target_heading_to_subsequent_goals_error.shape)
+        reshaped_sin_target_heading_to_subsequent_goals_error = sin_target_heading_to_subsequent_goals_error.view(
+            sin_target_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(sin_target_heading_to_subsequent_goals_error.shape)
+        
+        return {
+            "target_positions": self._target_positions,
+            "target_headings": self._target_heading,
+            "target_rotations": self._target_rotations,
+            "previous_is_before_gate": self._previous_is_before_gate,
+            "previous_is_after_gate": self._previous_is_after_gate,
+            "target_index": self._target_index,
+            "num_goals": self._num_goals,
+            "trajectory_completed": self._trajectory_completed,
+            "position_distance": self._task_data[:, 3],
+            "cos_heading_to_target_error": self._task_data[:, 4],
+            "sin_heading_to_target_error": self._task_data[:, 5],
+            "cos_target_heading_error": self._task_data[:, 6],
+            "sin_target_heading_error": self._task_data[:, 7],
+            "subsequent_goals_distance": reshaped_subsequent_goals_distance,
+            "cos_heading_to_subsequent_goals_error": reshaped_cos_heading_to_subsequent_goals_error,
+            "sin_heading_to_subsequent_goals_error": reshaped_sin_heading_to_subsequent_goals_error,
+            "cos_target_heading_to_subsequent_goals_error": reshaped_cos_target_heading_to_subsequent_goals_error,
+            "sin_target_heading_to_subsequent_goals_error": reshaped_sin_target_heading_to_subsequent_goals_error,
+            "missed_gate": self._missed_gate,
+        }
 
     def initialize_buffers(self, env_ids: torch.Tensor | None = None) -> None:
         """
@@ -101,6 +229,9 @@ class RaceGatesTask(TaskCore):
         self._trajectory_completed = torch.zeros((self._num_envs,), device=self._device, dtype=torch.bool)
         self._num_goals = torch.zeros((self._num_envs,), device=self._device, dtype=torch.long)
         self._ALL_INDICES = torch.arange(self._num_envs, dtype=torch.long, device=self._device)
+        self._num_resets_per_env = torch.zeros((self._num_envs,), device=self._device, dtype=torch.long)
+        self._laps_completed = torch.zeros((self._num_envs,), device=self._device, dtype=torch.long)
+        self._missed_gate = torch.zeros((self._num_envs,), device=self._device, dtype=torch.bool)
 
     def create_logs(self) -> None:
         """
@@ -113,14 +244,21 @@ class RaceGatesTask(TaskCore):
         self.scalar_logger.add_log("task_state", "AVG/absolute_angular_velocity", "mean")
         self.scalar_logger.add_log("task_state", "AVG/position_distance", "mean")
         self.scalar_logger.add_log("task_state", "AVG/boundary_distance", "mean")
-        self.scalar_logger.add_log("task_reward", "AVG/linear_velocity", "mean")
-        self.scalar_logger.add_log("task_reward", "AVG/angular_velocity", "mean")
+        self.scalar_logger.add_log("task_state", "MAX/num_tracks(resets)", "max")
+        self.scalar_logger.add_log("task_state", "MIN/num_tracks(resets)", "min")
+        self.scalar_logger.add_log("task_state", "AVG/laps_completed", "mean")
+        self.scalar_logger.add_log("task_state", "SUM/num_goals", "sum")
+        self.scalar_logger.add_log("task_state", "AVG/num_gates", "mean")
+
         self.scalar_logger.add_log("task_reward", "AVG/boundary", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/heading", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/progress", "mean")
-        self.scalar_logger.add_log("task_reward", "SUM/num_goals", "sum")
+        self.scalar_logger.add_log("task_reward", "AVG/goals_reward", "mean")
+        self.scalar_logger.add_log("task_reward", "AVG/time_penalty", "mean")
+        self.scalar_logger.add_log("task_reward", "AVG/reverse_penalty", "mean")
+        self.scalar_logger.add_log("task_reward", "AVG/missed_gate_penalty", "mean")
 
-    def get_observations(self) -> torch.Tensor:
+    def get_observations(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Computes the observation tensor from the current state of the robot.
 
@@ -157,11 +295,11 @@ class RaceGatesTask(TaskCore):
             torch.Tensor: The observation tensor."""
 
         # position error
-        self._position_error = (
+        position_error = (
             self._target_positions[self._ALL_INDICES, self._target_index]
             - self._robot.root_link_pos_w[self._env_ids, :2]
         )
-        self._position_dist = torch.linalg.norm(self._position_error, dim=-1)
+        position_dist = torch.linalg.norm(position_error, dim=-1)
 
         # position error expressed as distance and angular error (to the position)
         heading = self._robot.heading_w[self._env_ids]
@@ -181,7 +319,7 @@ class RaceGatesTask(TaskCore):
         # Store in buffer
         self._task_data[:, 0:2] = self._robot.root_com_lin_vel_b[self._env_ids, :2]
         self._task_data[:, 2] = self._robot.root_com_ang_vel_w[self._env_ids, -1]
-        self._task_data[:, 3] = self._position_dist
+        self._task_data[:, 3] = position_dist
         self._task_data[:, 4] = torch.cos(target_heading_error)
         self._task_data[:, 5] = torch.sin(target_heading_error)
         self._task_data[:, 6] = torch.cos(heading_error)
@@ -235,9 +373,48 @@ class RaceGatesTask(TaskCore):
 
         for randomizer in self.randomizers:
             randomizer.observations(observations=self._task_data)
+        
+        # Gates positions normalization & padding
+        max_actual_goals = int(torch.max(self._num_goals).item()) + 1
+        # Initialize with zeros for all environments
+        points_with_padding = torch.zeros(
+            (self._num_envs, self._task_cfg.max_num_corners, 2),
+            device=self._device,
+            dtype=torch.float32,
+        )
+        headings_with_padding = torch.zeros(
+            (self._num_envs, self._task_cfg.max_num_corners),
+            device=self._device,
+            dtype=torch.float32,
+        )
+
+        # Fill in the actual points and headings for each environment
+        for env_idx in range(self._num_envs):
+            num_goals_env = int(self._num_goals[env_idx].item()) + 1
+            if num_goals_env > 0:
+                points = self._target_positions[env_idx, :num_goals_env] - self._env_origins[env_idx, :2].unsqueeze(0)
+                normalized_points = points / self._task_cfg.scale
+                points_with_padding[env_idx, :num_goals_env] = normalized_points
+                
+                headings = self._target_heading[env_idx, :num_goals_env]
+                normalized_headings = torch.atan2(torch.sin(headings), torch.cos(headings)) / math.pi
+                headings_with_padding[env_idx, :num_goals_env] = normalized_headings
+        
+        gates_positions = points_with_padding.view(self._num_envs, -1)
+        normalized_num_goals = (self._num_goals.float() - self._task_cfg.min_num_corners) / (self._task_cfg.max_num_corners - self._task_cfg.min_num_corners)
+
+        # Reshape and concatenate gates positions and headings
+        gates_positions_reshaped = points_with_padding
+        headings_with_padding_reshaped = headings_with_padding.view(self._num_envs, self._task_cfg.max_num_corners, 1)
+        gates_and_headings_combined = torch.cat((gates_positions_reshaped, headings_with_padding_reshaped), dim=-1)
+        flattened_gates_and_headings = gates_and_headings_combined.view(self._num_envs, -1)
+        
+        track_info = torch.concat((flattened_gates_and_headings, normalized_num_goals.unsqueeze(-1)), dim=-1)
+        
+        # combined_task_data = torch.concat((self._task_data, self._robot.get_observations(env_ids=self._env_ids), gates_positions), dim=-1)
 
         # Concatenate the task observations with the robot observations
-        return torch.concat((self._task_data, self._robot.get_observations()), dim=-1)
+        return torch.concat((self._task_data, self._robot.get_observations(env_ids=self._env_ids)), dim=-1), track_info
 
     def compute_rewards(self) -> torch.Tensor:
         """
@@ -246,12 +423,13 @@ class RaceGatesTask(TaskCore):
         Returns:
             torch.Tensor: The reward for the current state of the robot."""
 
-        # position error expressed as distance and angular error (to the position)
-        position_error = (
-            self._robot.root_link_pos_w[self._env_ids, :2]
-            - self._target_positions[self._ALL_INDICES, self._target_index]
+        # position error
+        self._position_error = (
+            self._target_positions[self._ALL_INDICES, self._target_index]
+            - self._robot.root_link_pos_w[self._env_ids, :2]
         )
-        position_dist = torch.linalg.norm(position_error, dim=-1)
+        self._position_dist = torch.linalg.norm(self._position_error, dim=-1)
+        # position error expressed as distance and angular error (to the position)
         heading = self._robot.heading_w[self._env_ids]
         heading_error = torch.atan2(
             torch.sin(self._target_heading[self._ALL_INDICES, self._target_index] - heading),
@@ -268,13 +446,6 @@ class RaceGatesTask(TaskCore):
         # progress
         progress_rew = self._previous_position_dist - self._position_dist
 
-        # Update logs
-        self.scalar_logger.log("task_state", "AVG/position_distance", self._position_dist)
-        self.scalar_logger.log("task_state", "AVG/boundary_distance", boundary_dist)
-        self.scalar_logger.log("task_state", "AVG/normed_linear_velocity", linear_velocity)
-        self.scalar_logger.log("task_state", "MAX/normed_linear_velocity", linear_velocity)
-        self.scalar_logger.log("task_state", "AVG/absolute_angular_velocity", angular_velocity)
-
         # heading reward (encourages the robot to face the target)
         heading_rew = torch.exp(-heading_dist / self._task_cfg.position_heading_exponential_reward_coeff)
 
@@ -283,16 +454,18 @@ class RaceGatesTask(TaskCore):
 
         # Project the robot position into the target frame
         pos_proj = torch.matmul(
-            self._target_rotations[self._ALL_INDICES, self._target_index], position_error.unsqueeze(-1)
+            self._target_rotations[self._ALL_INDICES, self._target_index], self._position_error.unsqueeze(-1)
         ).squeeze(-1)
-        is_after_gate = torch.logical_and(
+        # Fix: Swap "before" and "after" gate definitions to match expected behavior
+        # Now "before" means in front of the gate, and "after" means behind the gate
+        is_before_gate = torch.logical_and(
             torch.logical_and(
                 pos_proj[:, 0] > 0,
                 pos_proj[:, 0] < 1,
             ),
             torch.abs(pos_proj[:, 1]) < self._task_cfg.gate_width / 2,
         )
-        is_before_gate = torch.logical_and(
+        is_after_gate = torch.logical_and(
             torch.logical_and(
                 pos_proj[:, 0] < 0,
                 pos_proj[:, 0] > -1,
@@ -300,14 +473,28 @@ class RaceGatesTask(TaskCore):
             torch.abs(pos_proj[:, 1]) < self._task_cfg.gate_width / 2,
         )
 
-        # Checks if the goal is reached
+        self._missed_gate = torch.logical_and(
+            torch.logical_and(
+                pos_proj[:, 0] < 0,
+                pos_proj[:, 0] > -1,
+            ),
+            torch.abs(pos_proj[:, 1]) > self._task_cfg.gate_width / 2,
+        )
+        
+        # Checks if the goal is reached (robot has moved from being in front of the gate to behind it)
         goal_reached = torch.logical_and(is_after_gate, self._previous_is_before_gate).int()
         goal_reverse = torch.logical_and(is_before_gate, self._previous_is_after_gate).int()
         reached_ids = goal_reached.nonzero(as_tuple=False).squeeze(-1)
         # if the goal is reached, the target index is updated
         self._target_index = self._target_index + goal_reached
         # Check if the trajectory is completed
-        self._trajectory_completed = self._target_index > self._num_goals
+        close_loop = 0 if self._task_cfg.num_laps > 1 else 1
+        self._trajectory_completed = self._target_index > self._num_goals + close_loop  # +1 so starts and finish on the same gate
+        
+        # Track lap completion: when trajectory is completed, increment lap counter
+        lap_completed = self._trajectory_completed.int()
+        self._laps_completed = self._laps_completed + lap_completed
+        
         # To avoid out of bounds errors, set the target index to 0 if the trajectory is completed
         # If the task loops, then the target index is set to 0 which will make the robot go back to the first goal
         # The episode termination is handled in the get_dones method (looping or not)
@@ -317,15 +504,31 @@ class RaceGatesTask(TaskCore):
         self._previous_position_dist[reached_ids] = 0
 
         # Update logs
-        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew)
-        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew)
-        self.scalar_logger.log("task_reward", "AVG/progress", progress_rew)
-        self.scalar_logger.log("task_reward", "SUM/num_goals", goal_reached)
+        self.scalar_logger.log("task_state", "AVG/position_distance", self._position_dist)
+        self.scalar_logger.log("task_state", "AVG/boundary_distance", boundary_dist)
+        self.scalar_logger.log("task_state", "AVG/normed_linear_velocity", linear_velocity)
+        self.scalar_logger.log("task_state", "MAX/normed_linear_velocity", linear_velocity)
+        self.scalar_logger.log("task_state", "AVG/absolute_angular_velocity", angular_velocity)
+        self.scalar_logger.log("task_state", "MAX/num_tracks(resets)", self._num_resets_per_env)
+        self.scalar_logger.log("task_state", "MIN/num_tracks(resets)", self._num_resets_per_env)
+        self.scalar_logger.log("task_state", "AVG/laps_completed", self._laps_completed)
+        self.scalar_logger.log("task_state", "SUM/num_goals", goal_reached)
+        self.scalar_logger.log("task_state", "AVG/num_gates", torch.mean(self._num_goals.float()))
+        
+        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew * self._task_cfg.boundary_weight)
+        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew * self._task_cfg.position_heading_weight)
+        self.scalar_logger.log("task_reward", "AVG/progress", progress_rew * self._task_cfg.progress_weight)
+        self.scalar_logger.log("task_reward", "AVG/time_penalty", self._task_cfg.time_penalty)
+        self.scalar_logger.log("task_reward", "AVG/goals_reward", goal_reached * self._task_cfg.reached_bonus)
+        self.scalar_logger.log("task_reward", "AVG/reverse_penalty", goal_reverse * self._task_cfg.reverse_penalty)
+        self.scalar_logger.log("task_reward", "AVG/missed_gate_penalty", self._missed_gate.int() * self._task_cfg.missed_gate_penalty)
+
+        
 
         # Set the previous values
         self._previous_is_before_gate = is_before_gate.clone()
         self._previous_is_after_gate = is_after_gate.clone()
-        self._previous_position_dist = position_dist.clone()
+        self._previous_position_dist = self._position_dist.clone()
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
@@ -335,7 +538,8 @@ class RaceGatesTask(TaskCore):
             + self._task_cfg.time_penalty
             + self._task_cfg.reached_bonus * goal_reached
             + self._task_cfg.reverse_penalty * goal_reverse
-        ) + self._robot.compute_rewards()
+            + self._missed_gate.int() * self._task_cfg.missed_gate_penalty
+        ) + self._robot.compute_rewards(env_ids=self._env_ids)
 
     def reset(
         self,
@@ -373,18 +577,9 @@ class RaceGatesTask(TaskCore):
         # Reset the target index and trajectory completed
         # self._target_index[env_ids] = 0
         self._trajectory_completed[env_ids] = False
-
-        # Make sure the position error and position dist are up to date after the reset
-        self._position_error[env_ids] = (
-            self._target_positions[env_ids, self._target_index[env_ids]]
-            - self._robot.root_link_pos_w[self._env_ids, :2][env_ids]
-        )
-        self._position_dist[env_ids] = torch.linalg.norm(self._position_error[env_ids], dim=-1)
-        self._previous_position_dist[env_ids] = self._position_dist[env_ids].clone()
-
-        # Reset the gate states
-        self._previous_is_before_gate[env_ids] = False
-        self._previous_is_after_gate[env_ids] = False
+        
+        # Reset the lap counter
+        self._laps_completed[env_ids] = 0
 
         # The first 6 env actions define ranges, we need to make sure they don't exceed the [0,1] range.
         # They are given as [min, delta] we will convert them to [min, max] that is max = min + delta
@@ -401,6 +596,28 @@ class RaceGatesTask(TaskCore):
         else:
             track_ids = torch.ones_like(env_ids) * self._task_cfg.fixed_track_id
             self._track_rng.set_seeds(track_ids, env_ids)
+
+        # Randomizes goals and initial conditions
+        self.set_goals(env_ids)
+        self.set_initial_conditions(env_ids)
+
+        # Resets the goal reached flag
+        self._goal_reached[env_ids] = 0
+
+        # Make sure the position error and position dist are up to date after the reset
+        self._position_error[env_ids] = (
+            self._target_positions[env_ids, self._target_index[env_ids]]
+            - self._robot.root_link_pos_w[self._env_ids, :2][env_ids]
+        )
+        self._position_dist[env_ids] = torch.linalg.norm(self._position_error[env_ids], dim=-1)
+        self._previous_position_dist[env_ids] = self._position_dist[env_ids].clone()
+
+        # Reset the gate states
+        # is_before_gate: robot is in front of the gate (positive x in gate frame)
+        # is_after_gate: robot is behind the gate (negative x in gate frame)
+        self._previous_is_before_gate[env_ids] = False
+        self._previous_is_after_gate[env_ids] = False
+        self._missed_gate[env_ids] = False
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -423,16 +640,26 @@ class RaceGatesTask(TaskCore):
             ones,
             task_failed,
         )
+        # # Add missed gate as a failure condition
+        task_failed = torch.where(
+            self._missed_gate,
+            ones,
+            task_failed,
+        )
 
         task_completed = torch.zeros_like(self._goal_reached, dtype=torch.long)
         # If the task is set to loop, don't terminate the episode early.
+        # If not looping, terminate after completing the specified number of laps
         if not self._task_cfg.loop:
-            task_completed = torch.where(self._trajectory_completed > 0, ones, task_completed)
+            task_completed = torch.where(self._laps_completed >= self._task_cfg.num_laps, ones, task_completed)
         return task_failed, task_completed
 
     def set_goals(self, env_ids: torch.Tensor):
         """
         Generates a random sequence of oriented goals for the task.
+        If self._task_cfg.same_track_for_all_envs is True, all envs get the same track.
+        Otherwise, each env gets its own random track.
+
         These goals are generated in a way allowing to precisely control the difficulty of the task through the
         environment action. This is done by randomizing ranges within which they can be generated. More information
         below:
@@ -460,26 +687,51 @@ class RaceGatesTask(TaskCore):
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: The target positions and orientations."""
+        
+        if self._task_cfg.same_track_for_all_envs:
+            # Per-env random tracks
+            num_goals = len(env_ids)
+            if self.num_generations < 1:
+                if self._task_cfg.fixed_track_id == 0:
+                    # BCN track
+                    print("Generating BCN track for all environments")
+                    self.points, self.tangents, self.num_goals = self._track_generator.generate_custom_track(env_ids, custom_track_id=self._task_cfg.custom_track_id)
+                else:
+                    self.points, self.tangents, self.num_goals = self._track_generator.generate_tracks_points_non_fixed_points(env_ids)
+            self._target_positions[env_ids] = self.points[env_ids] + self._env_origins[env_ids, :2].unsqueeze(1)
+            self._target_heading[env_ids] = self.tangents[env_ids]
+            self._target_rotations[env_ids, :, 0, 0] = torch.cos(self.tangents[env_ids])
+            self._target_rotations[env_ids, :, 0, 1] = torch.sin(self.tangents[env_ids])
+            self._target_rotations[env_ids, :, 1, 0] = -torch.sin(self.tangents[env_ids])
+            self._target_rotations[env_ids, :, 1, 1] = torch.cos(self.tangents[env_ids])
+            self._num_goals[env_ids] = self.num_goals[env_ids] - 1
+            if self._task_cfg.spawn_at_random_gate:
+                self._target_index[env_ids] = self._rng.sample_integer_torch(
+                    torch.zeros_like(env_ids), self.num_goals[env_ids] - 1, (1,), env_ids
+                ).long()
+            else:
+                self._target_index[env_ids] = 0
 
-        num_goals = len(env_ids)
-
-        points, tangents, num_goals = self._track_generator.generate_tracks_points_non_fixed_points(env_ids)
-
-        # Set the goals' positions:
-        self._target_positions[env_ids] = points + self._env_origins[env_ids, :2].unsqueeze(1)
-        self._target_heading[env_ids] = tangents
-        self._target_rotations[env_ids, :, 0, 0] = torch.cos(tangents)
-        self._target_rotations[env_ids, :, 0, 1] = torch.sin(tangents)
-        self._target_rotations[env_ids, :, 1, 0] = -torch.sin(tangents)
-        self._target_rotations[env_ids, :, 1, 1] = torch.cos(tangents)
-        self._num_goals[env_ids] = num_goals - 1
-        # If the task is set to randomize the starting gate, then we pick a random starting index
-        if self._task_cfg.spawn_at_random_gate:
-            self._target_index[env_ids] = self._rng.sample_integer_torch(
-                torch.zeros_like(env_ids), num_goals - 1, (1,), env_ids
-            ).long()
+            self.num_generations += 1
         else:
-            self._target_index[env_ids] = 0
+            # Per-env random tracks
+            num_goals = len(env_ids)
+            points, tangents, num_goals = self._track_generator.generate_tracks_points_non_fixed_points(env_ids)
+            self._target_positions[env_ids] = points + self._env_origins[env_ids, :2].unsqueeze(1)
+            self._target_heading[env_ids] = tangents
+            self._target_rotations[env_ids, :, 0, 0] = torch.cos(tangents)
+            self._target_rotations[env_ids, :, 0, 1] = torch.sin(tangents)
+            self._target_rotations[env_ids, :, 1, 0] = -torch.sin(tangents)
+            self._target_rotations[env_ids, :, 1, 1] = torch.cos(tangents)
+            self._num_goals[env_ids] = num_goals - 1
+            if self._task_cfg.spawn_at_random_gate:
+                self._target_index[env_ids] = self._rng.sample_integer_torch(
+                    torch.zeros_like(env_ids), num_goals - 1, (1,), env_ids
+                ).long()
+            else:
+                self._target_index[env_ids] = 0
+
+        self._num_resets_per_env[env_ids] += 1
 
     def set_initial_conditions(self, env_ids: torch.Tensor) -> None:
         """
@@ -554,8 +806,8 @@ class RaceGatesTask(TaskCore):
         initial_velocity[:, 5] = angular_velocity
 
         # Apply to articulation
-        self._robot.set_pose(initial_pose, env_ids)
-        self._robot.set_velocity(initial_velocity, env_ids)
+        self._robot.set_pose(initial_pose, self._env_ids[env_ids])
+        self._robot.set_velocity(initial_velocity, self._env_ids[env_ids])
 
     def create_task_visualization(self) -> None:
         """Adds the visual marker to the scene.
@@ -602,6 +854,10 @@ class RaceGatesTask(TaskCore):
         self.next_goals_visualizer = VisualizationMarkers(gate_marker_cfg)
         self.passed_goals_visualizer = VisualizationMarkers(gate_marker_cfg_grey)
         self.robot_pos_visualizer = VisualizationMarkers(robot_marker_cfg)
+        # Add track visualizer
+        self.track_visualizer = VisualizationMarkers(
+            TRACK_CFG.replace(prim_path=f"/Visuals/Command/task_{self._task_uid}/track")
+        )
 
     def update_task_visualization(self) -> None:
         """Updates the visual marker to the scene.
@@ -658,17 +914,66 @@ class RaceGatesTask(TaskCore):
             self.next_goals_visualizer.visualize(next_goals_pos, orientations=next_goals_quat)
 
         # Update the robot visualization. TODO Ideally we should lift the diamond a bit.
-        self.robot_pos_visualizer.visualize(self._robot.root_link_pos_w, self._robot.root_link_quat_w)
+        self.robot_pos_visualizer.visualize(self._robot.root_link_pos_w[self._env_ids], self._robot.root_link_quat_w[self._env_ids])
 
-    @property
-    def eval_data_keys(self) -> list[str]:
-        return ["current_target_idx", "target_positions", "target_headings", "num_goals"]
-
-    @property
-    def eval_data(self) -> dict:
-        return {
-            "current_target_idx": self._target_index,
-            "target_positions": self._target_positions,
-            "target_headings": self._target_heading,
-            "num_goals": self._num_goals,
-        }
+        # --- Track visualization ---
+        # Visualize the track for all environments
+        all_translations = []
+        all_orientations = []
+        all_scales = []
+        all_marker_indices = []
+        for env_idx in range(self._target_positions.shape[0]):
+            num_goals = int(self._num_goals[env_idx].item()) + 1
+            points = self._target_positions[env_idx, :num_goals]  # (num_goals, 2)
+            if points.shape[0] > 1:
+                # Convert to 3D
+                points3d = torch.zeros((points.shape[0], 3), device=points.device)
+                points3d[:, :2] = points
+                points_np = points3d.cpu().numpy()
+                # --- CLOSE THE LOOP ---
+                if points_np.shape[0] > 2:
+                    points_np = np.concatenate([points_np, points_np[:1]], axis=0)
+                num_segments = points_np.shape[0] - 1
+                translations = np.zeros((num_segments, 3))
+                orientations = np.zeros((num_segments, 4))
+                scales = np.ones((num_segments, 3))
+                marker_indices = np.zeros(num_segments, dtype=int)
+                for i in range(num_segments):
+                    p0 = points_np[i]
+                    p1 = points_np[i + 1]
+                    mid = (p0 + p1) / 2
+                    vec = p1 - p0
+                    length = np.linalg.norm(vec)
+                    if length > 1e-6:
+                        z_axis = np.array([0, 0, 1])
+                        axis = np.cross(z_axis, vec)
+                        axis_norm = np.linalg.norm(axis)
+                        if axis_norm < 1e-6:
+                            if np.dot(z_axis, vec) > 0:
+                                quat = np.array([1, 0, 0, 0])
+                            else:
+                                quat = np.array([0, 1, 0, 0])
+                        else:
+                            axis = axis / axis_norm
+                            angle = np.arccos(np.dot(z_axis, vec) / length)
+                            qw = np.cos(angle / 2)
+                            qx, qy, qz = axis * np.sin(angle / 2)
+                            quat = np.array([qw, qx, qy, qz])
+                    else:
+                        quat = np.array([1, 0, 0, 0])
+                    translations[i] = mid
+                    orientations[i] = quat
+                    scales[i] = [1.0, 1.0, length]
+                all_translations.append(translations)
+                all_orientations.append(orientations)
+                all_scales.append(scales)
+                all_marker_indices.append(marker_indices)
+        if all_translations:
+            translations = np.concatenate(all_translations, axis=0)
+            orientations = np.concatenate(all_orientations, axis=0)
+            scales = np.concatenate(all_scales, axis=0)
+            marker_indices = np.concatenate(all_marker_indices, axis=0)
+            self.track_visualizer.set_visibility(True)
+            self.track_visualizer.visualize(translations=translations, orientations=orientations, scales=scales, marker_indices=marker_indices)
+        else:
+            self.track_visualizer.set_visibility(False)

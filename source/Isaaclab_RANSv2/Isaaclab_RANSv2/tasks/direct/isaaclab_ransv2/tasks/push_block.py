@@ -56,6 +56,57 @@ class PushBlockTask(TaskCore):
         self.initialize_buffers()
         self.design_scene()
 
+    @property
+    def eval_data_keys(self) -> list[str]:
+        """
+        Returns the keys of the data used for evaluation.
+
+        Returns:
+            list[str]: The keys of the data used for evaluation."""
+        
+        return [
+            "block_positions", 
+            "target_positions",
+            "robot_to_block_distance",
+            "block_to_target_distance",
+            "cos_robot_heading_to_block",
+            "sin_robot_heading_to_block",
+            "cos_robot_heading_to_target",
+            "sin_robot_heading_to_target",
+        ]
+    
+    @property
+    def eval_data_specs(self)->dict[str, list[str]]:
+        return {
+            "block_positions": [".x.m", ".y.m", ".z.m"],
+            "target_positions": [".x.m", ".y.m"],
+            "robot_to_block_distance": [".distance.m"],
+            "block_to_target_distance": [".distance.m"],
+            "cos_robot_heading_to_block": [".cos(robot_heading_to_block_error).rad"],
+            "sin_robot_heading_to_block": [".sin(robot_heading_to_block_error).rad"],
+            "cos_robot_heading_to_target": [".cos(robot_heading_to_target_error).rad"],
+            "sin_robot_heading_to_target": [".sin(robot_heading_to_target_error).rad"],
+        }
+    
+    @property
+    def eval_data(self) -> dict:
+        """
+        Returns the data used for evaluation.
+
+        Returns:
+            dict: The data used for evaluation."""
+        return {
+            "block_positions": self._block_positions,
+            "target_positions": self._target_positions,
+            "robot_to_block_distance": self._task_data[:, 0],
+            "block_to_target_distance": self._task_data[:, 1],
+            "cos_robot_heading_to_block": self._task_data[:, 2],
+            "sin_robot_heading_to_block": self._task_data[:, 3],
+            "cos_robot_heading_to_target": self._task_data[:, 4],
+            "sin_robot_heading_to_target": self._task_data[:, 5],
+        }
+
+
     def design_scene(self) -> None:
         """Setups the cube to be pushed in the environment."""
         # Block

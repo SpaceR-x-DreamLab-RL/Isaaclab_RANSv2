@@ -54,6 +54,49 @@ class TrackVelocitiesTask(TaskCore):
         # Buffers
         self.initialiaze_buffers()
 
+    @property
+    def eval_data_keys(self) -> list[str]:
+        """Returns the keys of the evaluation data.
+
+        Returns:
+            list[str]: The keys of the evaluation data."""
+
+        return [
+            "linear_velocity_target", 
+            "lateral_velocity_target", 
+            "angular_velocity_target", 
+            "goal_reached",
+            "error_linear_velocity",
+            "error_lateral_velocity",
+            "error_angular_velocity",
+        ]
+    
+    @property
+    def eval_data_specs(self)->dict[str, list[str]]:
+        return {
+            "linear_velocity_target": [".m/s"],
+            "lateral_velocity_target": [".m/s"],
+            "angular_velocity_target": [".rad/s"],
+            "goal_reached": [".u"],
+            "error_linear_velocity": [".lin_vel_error.m/s"],
+            "error_lateral_velocity": [".lat_vel_error.m/s"],
+            "error_angular_velocity": [".ang_vel_error.rad/s"],
+        }
+
+
+    @property
+    def eval_data(self) -> dict:
+        return {
+            "linear_velocity_target": self._linear_velocity_target,
+            "lateral_velocity_target": self._lateral_velocity_target,
+            "angular_velocity_target": self._angular_velocity_target,
+            "goal_reached": self._goal_reached,
+            "error_linear_velocity": self._task_data[:, 0],
+            "error_lateral_velocity": self._task_data[:, 1],
+            "error_angular_velocity": self._task_data[:, 2],
+        }
+
+
     def create_logs(self) -> None:
         """
         Creates a dictionary to store the training statistics for the task.

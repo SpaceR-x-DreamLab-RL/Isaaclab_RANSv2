@@ -53,6 +53,113 @@ class GoThroughPosesTask(TaskCore):
         # Buffers
         self.initialize_buffers()
 
+    @property
+    def eval_data_keys(self) -> list[str]:
+        """
+        Returns the keys of the data used for evaluation.
+
+        Returns:
+            list[str]: The keys of the data used for evaluation."""
+        
+        return [
+            "target_positions", 
+            "target_headings", 
+            "target_index", 
+            "num_goals", 
+            "trajectory_completed",
+            "position_distance",
+            "cos_heading_to_target_error",
+            "sin_heading_to_target_error",
+            "cos_target_heading_error",
+            "sin_target_heading_error",
+            "subsequent_goals_distance",
+            "cos_heading_to_subsequent_goals_error",
+            "sin_heading_to_subsequent_goals_error",
+            "cos_target_heading_to_subsequent_goals_error",
+            "sin_target_heading_to_subsequent_goals_error",
+        ]
+    
+    @property
+    def eval_data_specs(self)->dict[str, list[str]]:
+        return {
+            "target_positions": [coord for i in range(self._task_cfg.max_num_goals) for coord in (f".x_{i}.m", f".y_{i}.m")],
+            "target_headings": [f".target_heading_{i}.rad" for i in range(self._task_cfg.max_num_goals)],
+            "target_index": [".u"],
+            "num_goals": [".u"],
+            "trajectory_completed": [".u"],
+            "position_distance": [".distance.m"],
+            "cos_heading_to_target_error": [".cos(heading).u"],
+            "sin_heading_to_target_error": [".sin(heading).u"],
+            "cos_target_heading_error": [".cos(target_heading_error).u"],
+            "sin_target_heading_error": [".sin(target_heading_error).u"],
+            "subsequent_goals_distance": [f".distance_sub_goal_{i}.m" for i in range(self._task_cfg.num_subsequent_goals - 1)],
+            "cos_heading_to_subsequent_goals_error": [f".cos(heading)_sub_goal_{i}.u" for i in range(self._task_cfg.num_subsequent_goals - 1)],
+            "sin_heading_to_subsequent_goals_error": [f".sin(heading)_sub_goal_{i}.u" for i in range(self._task_cfg.num_subsequent_goals - 1)],
+            "cos_target_heading_to_subsequent_goals_error": [f".cos(target_heading)_sub_goal_{i}.u" for i in range(self._task_cfg.num_subsequent_goals - 1)],
+            "sin_target_heading_to_subsequent_goals_error": [f".sin(target_heading)_sub_goal_{i}.u" for i in range(self._task_cfg.num_subsequent_goals - 1)],
+        }
+    
+    @property
+    def eval_data(self) -> dict:
+        """
+        Returns the data used for evaluation.
+
+        Returns:
+            dict: The data used for evaluation."""
+        
+        subsequent_goals_distance = []
+        cos_heading_to_subsequent_goals_error = []
+        sin_heading_to_subsequent_goals_error = []
+        cos_target_heading_to_subsequent_goals_error = []
+        sin_target_heading_to_subsequent_goals_error = []
+
+        for i in range(self._task_cfg.num_subsequent_goals - 1):
+            subsequent_goals_distance.append(self._task_data[:, 8 + 5 * i])
+            cos_heading_to_subsequent_goals_error.append(self._task_data[:, 9 + 5 * i])
+            sin_heading_to_subsequent_goals_error.append(self._task_data[:, 10 + 5 * i])
+            cos_target_heading_to_subsequent_goals_error.append(self._task_data[:, 11 + 5 * i])
+            sin_target_heading_to_subsequent_goals_error.append(self._task_data[:, 12 + 5 * i])
+
+        subsequent_goals_distance = torch.stack(subsequent_goals_distance, dim=-1)
+        cos_heading_to_subsequent_goals_error = torch.stack(cos_heading_to_subsequent_goals_error, dim=-1)
+        sin_heading_to_subsequent_goals_error = torch.stack(sin_heading_to_subsequent_goals_error, dim=-1)
+        cos_target_heading_to_subsequent_goals_error = torch.stack(cos_target_heading_to_subsequent_goals_error, dim=-1)
+        sin_target_heading_to_subsequent_goals_error = torch.stack(sin_target_heading_to_subsequent_goals_error, dim=-1)
+
+        reshaped_subsequent_goals_distance = subsequent_goals_distance.view(
+            subsequent_goals_distance.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(subsequent_goals_distance.shape)
+        reshaped_cos_heading_to_subsequent_goals_error = cos_heading_to_subsequent_goals_error.view(
+            cos_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(cos_heading_to_subsequent_goals_error.shape)
+        reshaped_sin_heading_to_subsequent_goals_error = sin_heading_to_subsequent_goals_error.view(
+            sin_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(sin_heading_to_subsequent_goals_error.shape)
+        reshaped_cos_target_heading_to_subsequent_goals_error = cos_target_heading_to_subsequent_goals_error.view(
+            cos_target_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(cos_target_heading_to_subsequent_goals_error.shape)
+        reshaped_sin_target_heading_to_subsequent_goals_error = sin_target_heading_to_subsequent_goals_error.view(
+            sin_target_heading_to_subsequent_goals_error.shape[0], self._task_cfg.num_subsequent_goals - 1, -1
+        ).permute(0, 2, 1).reshape(sin_target_heading_to_subsequent_goals_error.shape)
+        
+        return {
+            "target_positions": self._target_positions,
+            "target_headings": self._target_heading,
+            "target_index": self._target_index,
+            "num_goals": self._num_goals,
+            "trajectory_completed": self._trajectory_completed,
+            "position_distance": self._task_data[:, 3],
+            "cos_heading_to_target_error": self._task_data[:, 4],
+            "sin_heading_to_target_error": self._task_data[:, 5],
+            "cos_target_heading_error": self._task_data[:, 6],
+            "sin_target_heading_error": self._task_data[:, 7],
+            "subsequent_goals_distance": reshaped_subsequent_goals_distance,
+            "cos_heading_to_subsequent_goals_error": reshaped_cos_heading_to_subsequent_goals_error,
+            "sin_heading_to_subsequent_goals_error": reshaped_sin_heading_to_subsequent_goals_error,
+            "cos_target_heading_to_subsequent_goals_error": reshaped_cos_target_heading_to_subsequent_goals_error,
+            "sin_target_heading_to_subsequent_goals_error": reshaped_sin_target_heading_to_subsequent_goals_error,
+        }
+
     def initialize_buffers(self, env_ids: torch.Tensor | None = None) -> None:
         """
         Initializes the buffers used by the task.

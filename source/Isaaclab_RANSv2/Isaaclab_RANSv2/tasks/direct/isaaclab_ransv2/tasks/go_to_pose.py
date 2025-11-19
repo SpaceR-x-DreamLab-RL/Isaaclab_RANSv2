@@ -53,6 +53,54 @@ class GoToPoseTask(TaskCore):
         # Buffers
         self.initialize_buffers()
 
+    @property
+    def eval_data_keys(self) -> list[str]:
+        """
+        Returns the keys of the data used for evaluation.
+
+        Returns:
+            list[str]: The keys of the data used for evaluation."""
+        
+        return [
+            "target_position", 
+            "target_heading",
+            "position_distance", 
+            "cos_heading_to_target_error", 
+            "sin_heading_to_target_error",
+            "cos_target_heading_error",
+            "sin_target_heading_error",
+        ]
+    
+    @property
+    def eval_data_specs(self) -> dict[str, list[str]]:
+        return {
+            "target_position": [".x.m", ".y.m"],
+            "target_heading": [".rad"],
+            "position_distance": [".distance.m"],
+            "cos_heading_to_target_error": [".cos(heading_to_target).u"],
+            "sin_heading_to_target_error": [".sin(heading_to_target).u"],
+            "cos_target_heading_error": [".cos(target_heading_error).u"],
+            "sin_target_heading_error": [".sin(target_heading_error).u"],
+        }
+    
+    @property
+    def eval_data(self) -> dict:
+        """
+        Returns the data used for evaluation.
+
+        Returns:
+            dict: The data used for evaluation."""
+        
+        return {
+            "target_position": self._target_positions,
+            "target_heading": self._target_headings,
+            "position_distance": self._position_dist,
+            "cos_heading_to_target_error": self._task_data[:, 1],
+            "sin_heading_to_target_error": self._task_data[:, 2],
+            "cos_target_heading_error": self._task_data[:, 3],
+            "sin_target_heading_error": self._task_data[:, 4],
+        }
+
     def initialize_buffers(self, env_ids: torch.Tensor | None = None) -> None:
         """
         Initializes the buffers used by the task.
