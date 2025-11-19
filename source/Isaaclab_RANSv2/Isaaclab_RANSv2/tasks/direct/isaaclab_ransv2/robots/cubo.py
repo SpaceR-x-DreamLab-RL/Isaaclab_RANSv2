@@ -316,7 +316,7 @@ class CuboRobot(RobotCore):
 
         This quantity is the position of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze()
 
     @property
     def root_link_quat_w(self) -> torch.Tensor:
@@ -324,7 +324,7 @@ class CuboRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body.
         """
-        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze()
 
     @property
     def root_link_vel_w(self) -> torch.Tensor:
@@ -386,7 +386,7 @@ class CuboRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze()
 
     @property
     def root_com_vel_w(self) -> torch.Tensor:
@@ -394,7 +394,7 @@ class CuboRobot(RobotCore):
 
         This quantity contains the linear and angular velocities of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze()
 
     @property
     def root_com_lin_vel_w(self) -> torch.Tensor:
@@ -402,7 +402,7 @@ class CuboRobot(RobotCore):
 
         This quantity is the linear velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze()
 
     @property
     def root_com_ang_vel_w(self) -> torch.Tensor:
@@ -410,7 +410,7 @@ class CuboRobot(RobotCore):
 
         This quantity is the angular velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze(0)
+        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze()
 
     @property
     def root_com_lin_vel_b(self) -> torch.Tensor:
