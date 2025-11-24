@@ -15,6 +15,8 @@ from ..robots_cfg import PinguRobotCfg
 
 from .robot_core import RobotCore
 
+import numpy as np
+
 
 class PinguRobot(RobotCore):
 
@@ -57,6 +59,13 @@ class PinguRobot(RobotCore):
         if self._robot_cfg.has_reaction_wheel:
             self._reaction_wheel_dof_idx, _ = self._robot.find_joints(self._robot_cfg.reaction_wheel_dof_name)
 
+        self._locking_joint_dof_idx, _ = self._robot.find_joints(
+            self._robot_cfg.locking_joint_dof_name
+        )
+
+        self._left_levionarm_dof_idx, _ = self._robot.find_joints(self._robot_cfg.left_levionarm_dof_name)
+        self._right_levionarm_dof_idx, _ = self._robot.find_joints(self._robot_cfg.right_levionarm_dof_name)
+
     def create_logs(self):
         super().create_logs()
 
@@ -73,17 +82,17 @@ class PinguRobot(RobotCore):
     def compute_rewards(self):
         # TODO: DT should be factored in?
 
-        action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
+        # action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
         joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
 
         # Log data
-        self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
+        # self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
+        # self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
         self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
 
         return (
-            action_rate * self._robot_cfg.rew_action_rate_scale
+            # action_rate * self._robot_cfg.rew_action_rate_scale
             + joint_accelerations * self._robot_cfg.rew_joint_accel_scale
         )
 
@@ -106,9 +115,14 @@ class PinguRobot(RobotCore):
         # self._robot.set_external_force_and_torque(
         #    thrust_reset, thrust_reset, body_ids=self._thrusters_dof_idx, env_ids=env_ids
         # )
-        locking_joints = torch.zeros((len(env_ids), 8), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
-        self._robot.set_joint_velocity_target(locking_joints, env_ids=env_ids)
-        self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
+        locking_joints = torch.zeros((len(env_ids), 3), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
+        self._robot.set_joint_velocity_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
+        self._robot.set_joint_position_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
+
+        levionarms_reset = torch.zeros((len(env_ids), 2), device=self._device)
+        self._robot.set_joint_velocity_target(levionarms_reset, joint_ids=self._left_levionarm_dof_idx, env_ids=env_ids)
+        self._robot.set_joint_velocity_target(levionarms_reset, joint_ids=self._right_levionarm_dof_idx, env_ids=env_ids)
+        # self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
 
         if self._robot_cfg.has_reaction_wheel:
             rw_reset = torch.zeros_like(self._reaction_wheel_action)
@@ -118,19 +132,56 @@ class PinguRobot(RobotCore):
     def process_actions(self, actions: torch.Tensor):
         """Process the actions for the robot.
 
-        Expects either binary actions: 0 or 1, or continuous actions: [0, 1].
-
-        - First, clip the actions to the action space limits. This is done to avoid violating the robot's limits.
-        - Second, apply the action randomizers to the actions. This is done to add noise to the actions, apply
-          different scaling factors to the actions, etc.
-        - Third, format the actions to send to the actuators.
+        Continous array of shape (8, 1) with values in [-1, 1]. Creates the thrusts commands based on the following mapping:
+        - actions[0]: Forward/Backward. +X: thrusters 4 and 7 on, -X: thrusters 3 and 8 on.
+        - actions[1]: Left/Right. +Y: thrusters 2 and 5 on, -Y: thrusters 1 and 6 on.
+        - actions[2]: Rotate CW/CCW. CW: thrusters 2, 4, 6, 8 on, CCW: thrusters 1, 3, 5, 7 on.
+        - actions[3:5]: Left Arm joints (shoulder, elbow). 
+        - actions[5:7]: Right Arm joints (shoulder, elbow).
+        - actions[7]: Reaction wheel speed control.
 
         Args:
             actions (torch.Tensor): The actions to process."""
 
+        # High-level commands to thruster mapping
+        thrusts_actions = torch.zeros((actions.shape[0], self._robot_cfg.num_thrusters), device=self._device)
+        if torch.any(actions[:, 0] > 0):
+            # Forward
+            idx_thrust = torch.where(actions[:, 0] > 0)[0]
+            thrusts_actions[idx_thrust, 3] = 1.0
+            thrusts_actions[idx_thrust, 6] = 1.0
+        elif torch.any(actions[:, 0] < 0):
+            # Backward
+            idx_thrust = torch.where(actions[:, 0] < 0)[0]
+            thrusts_actions[idx_thrust, 2] = 1.0
+            thrusts_actions[idx_thrust, 7] = 1.0
+        if torch.any(actions[:, 1] > 0):
+            # Right
+            idx_thrust = torch.where(actions[:, 1] > 0)[0]
+            thrusts_actions[idx_thrust, 1] = 1.0
+            thrusts_actions[idx_thrust, 4] = 1.0
+        elif torch.any(actions[:, 1] < 0):
+            # Left
+            idx_thrust = torch.where(actions[:, 1] < 0)[0]
+            thrusts_actions[idx_thrust, 0] = 1.0
+            thrusts_actions[idx_thrust, 5] = 1.0
+        if torch.any(actions[:, 2] > 0):
+            # Rotate CW
+            idx_thrust = torch.where(actions[:, 2] > 0)[0]
+            thrusts_actions[idx_thrust, 1] = 1.0
+            thrusts_actions[idx_thrust, 3] = 1.0
+            thrusts_actions[idx_thrust, 5] = 1.0
+            thrusts_actions[idx_thrust, 7] = 1.0
+        elif torch.any(actions[:, 2] < 0):
+            # Rotate CCW
+            idx_thrust = torch.where(actions[:, 2] < 0)[0]
+            thrusts_actions[idx_thrust, 0] = 1.0
+            thrusts_actions[idx_thrust, 2] = 1.0
+            thrusts_actions[idx_thrust, 4] = 1.0
+            thrusts_actions[idx_thrust, 6] = 1.0
+
         # Enforce action limits at the robot level
         actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
-        actions.clip_(min=0.0, max=1.0)
         # Store the unaltered actions, by default the robot should only observe the unaltered actions.
         self._previous_unaltered_actions = self._unaltered_actions.clone()
         self._unaltered_actions = actions.clone()
@@ -143,7 +194,7 @@ class PinguRobot(RobotCore):
         self._actions = actions
 
         # Calculate the number of active thrusters (those with a value of 1)
-        n_active_thrusters = torch.sum(actions[:, : self._robot_cfg.num_thrusters], dim=1, keepdim=True)
+        n_active_thrusters = torch.abs(torch.sum(actions[:, :self._robot_cfg.num_thrusters], dim=1, keepdim=True))
         # Determine thrust scaling factor
         if self._robot_cfg.split_thrust:
             # Calculate thrust scale as max thrust divided by the number of active thrusters
@@ -156,7 +207,7 @@ class PinguRobot(RobotCore):
             thrust_scale = self._robot_cfg.max_thrust
 
         # Apply thrust to thrusters, based on whether reaction wheel is present
-        self._thrust_action[:, :, -1] = actions[:, : self._robot_cfg.num_thrusters].float() * thrust_scale
+        self._thrust_action[:, :, -1] = thrusts_actions.float() * thrust_scale
         # transform the 2D thrust actions into 3D forces and torques with x and y components set to zero and z components based on the thrust actions
         # self._thrust_action = self._thrust_action.unsqueeze(2).expand(-1, -1, 3)
         # self._thrust_action = torch.cat(
@@ -184,9 +235,21 @@ class PinguRobot(RobotCore):
         for randomizer in self.randomizers:
             randomizer.update(dt=self.scene.physics_dt, actions=self._actions)
 
+        # Thrusters
         self._robot.set_external_force_and_torque(
             self._thrust_action, torch.zeros_like(self._thrust_action), body_ids=self._thrusters_dof_idx
         )
+
+        # Arms
+        scalar = 1 / 0.05
+        self._robot.set_joint_velocity_target(
+            self._actions[:, 3:5] * scalar, joint_ids=self._left_levionarm_dof_idx
+        )
+        self._robot.set_joint_velocity_target(
+            self._actions[:, 5:7] * scalar, joint_ids=self._right_levionarm_dof_idx
+        )
+
+        # Reaction wheel
         if self._robot_cfg.has_reaction_wheel:
             self._robot.set_joint_effort_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
 
@@ -202,7 +265,12 @@ class PinguRobot(RobotCore):
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
     def configure_gym_env_spaces(self):
-        single_action_space = spaces.MultiDiscrete([2] * self._robot_cfg.num_thrusters)
+        single_action_space = spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._robot_cfg.num_thrusters,),
+            dtype=np.float32,
+        )
         action_space = vector.utils.batch_space(single_action_space, self._num_envs)
 
         return single_action_space, action_space
@@ -316,7 +384,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the position of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_link_quat_w(self) -> torch.Tensor:
@@ -324,7 +392,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body.
         """
-        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_link_vel_w(self) -> torch.Tensor:
@@ -386,7 +454,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_com_vel_w(self) -> torch.Tensor:
@@ -394,7 +462,7 @@ class PinguRobot(RobotCore):
 
         This quantity contains the linear and angular velocities of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_com_lin_vel_w(self) -> torch.Tensor:
@@ -402,7 +470,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the linear velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_com_ang_vel_w(self) -> torch.Tensor:
@@ -410,7 +478,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the angular velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze(0) #
 
     @property
     def root_com_lin_vel_b(self) -> torch.Tensor:

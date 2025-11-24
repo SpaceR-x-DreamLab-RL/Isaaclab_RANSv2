@@ -207,24 +207,28 @@ def main() -> None:
             new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
             if action[0] > 0:  # forward
                 print("Mapping forward action")
-                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
-                new_action = torch.tensor([[0, 0, 0, 1, 0, 0, 1, 0]], device=action.device)
+                new_action = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
             elif action[0] < 0:  # backward
                 print("Mapping backward action")
-                # new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
-                new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 1]], device=action.device)
+                new_action = torch.tensor([[-1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
             elif action[1] > 0:  # left
                 print("Mapping left action")
-                new_action = torch.tensor([[0, 1, 0, 0, 1, 0, 0, 0]], device=action.device)
+                new_action = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0]], device=action.device)
             elif action[1] < 0:  # right
                 print("Mapping right action")
-                new_action = torch.tensor([[1, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
+                new_action = torch.tensor([[0, -1, 0, 0, 0, 0, 0, 0]], device=action.device)
             elif action[2] > 0:  # rotate cw
                 print("Mapping rotate cw action")
-                new_action = torch.tensor([[0, 1, 0, 1, 0, 1, 0, 1]], device=action.device)
+                new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 0]], device=action.device)
             elif action[2] < 0:  # rotate ccw
                 print("Mapping rotate ccw action")
-                new_action = torch.tensor([[1, 0, 1, 0, 1, 0, 1, 0]], device=action.device)
+                new_action = torch.tensor([[0, 0, -1, 0, 0, 0, 0, 0]], device=action.device)
+            elif action[3] > 0:  # left arm shoulder
+                print("Mapping left arm shoulder action +v")
+                new_action = torch.tensor([[0, 0, 0, 1, 0, 0, 0, 0]], device=action.device)
+            elif action[3] < 0:  # left arm shoulder
+                print("Mapping left arm shoulder action -v")
+                new_action = torch.tensor([[0, 0, 0, -1, 0, 0, 0, 0]], device=action.device)
             else:
                 new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
 

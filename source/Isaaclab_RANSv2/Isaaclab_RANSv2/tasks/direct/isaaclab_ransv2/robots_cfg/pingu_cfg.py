@@ -32,6 +32,15 @@ class PinguRobotCfg(RobotCoreCfg):
     num_thrusters = 8
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
+    locking_joint_dof_name = ["x_lock_joint", "y_lock_joint", "base_joint"]
+    left_levionarm_dof_name = ["left_shoulder_joint", "left_elbow_joint"]
+    right_levionarm_dof_name = ["right_shoulder_joint", "right_elbow_joint"]
+    if has_reaction_wheel:
+        reaction_wheel_dof_name = [
+            "reaction_wheel",
+        ]
+        reaction_wheel_scale = 0.1  # [Nm]
+
     root_id_name = "base_link"
     rew_action_rate_scale = -0.12 / 8
     rew_joint_accel_scale = -2.5e-6
@@ -73,11 +82,7 @@ class PinguRobotCfg(RobotCoreCfg):
         clip_actions=[(0, 1)],
     )
 
-    if has_reaction_wheel:
-        reaction_wheel_dof_name = [
-            "reaction_wheel",
-        ]
-        reaction_wheel_scale = 0.1  # [Nm]
+    
 
     # Sensors
     body_contact_forces: ContactSensorCfg = ContactSensorCfg(
@@ -88,7 +93,7 @@ class PinguRobotCfg(RobotCoreCfg):
     )
 
     # Spaces
-    observation_space: int = num_thrusters + 1 * has_reaction_wheel
+    observation_space: int = 3 + 5 # Thrusters (8), 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
     state_space: int = 0
-    action_space: int = num_thrusters + 1 * has_reaction_wheel
+    action_space: int = 8 # 1 Forward/Backward, 1 Left/Right, 1 CW/CCW, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
     gen_space: int = 0  # TODO: Add the generative space from the randomization
