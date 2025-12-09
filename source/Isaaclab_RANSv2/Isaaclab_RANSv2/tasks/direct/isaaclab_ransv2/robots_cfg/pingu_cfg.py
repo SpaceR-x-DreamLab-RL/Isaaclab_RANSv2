@@ -28,18 +28,15 @@ class PinguRobotCfg(RobotCoreCfg):
 
     robot_cfg: ArticulationCfg = PINGU_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     marker_height = 0.9
-    has_reaction_wheel = False
+    has_reaction_wheel = True
     num_thrusters = 8
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     locking_joint_dof_name = ["x_lock_joint", "y_lock_joint", "base_joint"]
     left_levionarm_dof_name = ["left_shoulder_joint", "left_elbow_joint"]
     right_levionarm_dof_name = ["right_shoulder_joint", "right_elbow_joint"]
-    if has_reaction_wheel:
-        reaction_wheel_dof_name = [
-            "reaction_wheel",
-        ]
-        reaction_wheel_scale = 0.1  # [Nm]
+    reaction_wheel_dof_name = ["rw_revolute_joint"]
+    reaction_wheel_scale = 8.0  # [Nm]: scale from [-1, 1] action to effort (max is 10.0 Nm from URDF)
 
     root_id_name = "base_link"
     rew_action_rate_scale = -0.12 / 8

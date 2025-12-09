@@ -229,6 +229,18 @@ def main() -> None:
             elif action[3] < 0:  # left arm shoulder
                 print("Mapping left arm shoulder action -v")
                 new_action = torch.tensor([[0, 0, 0, -1, 0, 0, 0, 0]], device=action.device)
+            elif action[4] > 0:  # right arm shoulder
+                print("Mapping right arm shoulder action +v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
+            elif action[4] < 0:  # right arm shoulder
+                print("Mapping right arm shoulder action -v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, -1, 0, 0]], device=action.device)
+            elif action[5] > 0:  # reaction wheel positive
+                print("Mapping reaction wheel action +v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
+            elif action[5] < 0:  # reaction wheel negative
+                print("Mapping reaction wheel action -v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, -1]], device=action.device)
             else:
                 new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
 

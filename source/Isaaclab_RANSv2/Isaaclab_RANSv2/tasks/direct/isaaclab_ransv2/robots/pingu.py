@@ -119,10 +119,10 @@ class PinguRobot(RobotCore):
         self._robot.set_joint_velocity_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
         self._robot.set_joint_position_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
 
+        # Reset arms to zero effort (this is to let them settle naturally, can change this later)
         levionarms_reset = torch.zeros((len(env_ids), 2), device=self._device)
-        self._robot.set_joint_velocity_target(levionarms_reset, joint_ids=self._left_levionarm_dof_idx, env_ids=env_ids)
-        self._robot.set_joint_velocity_target(levionarms_reset, joint_ids=self._right_levionarm_dof_idx, env_ids=env_ids)
-        # self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
+        self._robot.set_joint_effort_target(levionarms_reset, joint_ids=self._left_levionarm_dof_idx, env_ids=env_ids)
+        self._robot.set_joint_effort_target(levionarms_reset, joint_ids=self._right_levionarm_dof_idx, env_ids=env_ids)
 
         if self._robot_cfg.has_reaction_wheel:
             rw_reset = torch.zeros_like(self._reaction_wheel_action)
@@ -216,10 +216,10 @@ class PinguRobot(RobotCore):
 
         if self._robot_cfg.has_reaction_wheel:
             # Separate continuous control for reaction wheel
+            # Action index 7 is the reaction wheel (actions[0:3] = thrusters, actions[3:5] = left arm, actions[5:7] = right arm, actions[7] = reaction wheel)
             self._reaction_wheel_action = (
-                actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
+                actions[:, 7:8] * self._robot_cfg.reaction_wheel_scale
             )
-            self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
 
         # Log data for monitoring
         self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
@@ -241,12 +241,18 @@ class PinguRobot(RobotCore):
         )
 
         # Arms
-        scalar = 1 / 0.05
-        self._robot.set_joint_velocity_target(
-            self._actions[:, 3:5] * scalar, joint_ids=self._left_levionarm_dof_idx
+        # Use effort control
+        # Scale actions from [-1, 1] to effort in Nm (max effort is 15Nm from config)
+        effort_scale = 10.0  # Nm per unit action
+        left_arm_effort = self._actions[:, 3:5] * effort_scale # left shoulder, left elbow
+        right_arm_effort = self._actions[:, 5:7] * effort_scale # right shoulder, right elbow
+        # print(self._left_levionarm_dof_idx) # 3 is left shoulder, 6 is left elbow
+        # print(self._right_levionarm_dof_idx) # 4 is right shoulder, 7 is right elbow
+        self._robot.set_joint_effort_target(
+            left_arm_effort, joint_ids=self._left_levionarm_dof_idx
         )
-        self._robot.set_joint_velocity_target(
-            self._actions[:, 5:7] * scalar, joint_ids=self._right_levionarm_dof_idx
+        self._robot.set_joint_effort_target(
+            right_arm_effort, joint_ids=self._right_levionarm_dof_idx
         )
 
         # Reaction wheel
