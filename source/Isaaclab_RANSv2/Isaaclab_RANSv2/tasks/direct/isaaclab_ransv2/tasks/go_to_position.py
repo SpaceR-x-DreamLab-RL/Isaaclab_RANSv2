@@ -98,9 +98,6 @@ class GoToPositionTask(TaskCore):
             "initial_lin_vel_x": [".initial_lin_vel_x.m/s"],
             "initial_lin_vel_y": [".initial_lin_vel_y.m/s"],
             "initial_ang_vel": [".initial_ang_vel.rad/s"],
-            "half_init_lin_vel_x": [".half_init_lin_vel_x.u"],
-            "half_init_lin_vel_y": [".half_init_lin_vel_y.u"],
-            "half_init_ang_vel": [".half_init_ang_vel.u"],
         }
     
     @property
@@ -118,9 +115,6 @@ class GoToPositionTask(TaskCore):
             "initial_lin_vel_x": self.initial_velocity[:, 0],
             "initial_lin_vel_y": self.initial_velocity[:, 1],
             "initial_ang_vel": self.initial_velocity[:, 5],
-            "half_init_lin_vel_x": self._half_init_lin_vel_x,
-            "half_init_lin_vel_y": self._half_init_lin_vel_y,
-            "half_init_ang_vel": self._half_init_ang_vel,
         }
 
 
@@ -137,9 +131,6 @@ class GoToPositionTask(TaskCore):
         self._target_positions = torch.zeros((self._num_envs, 2), device=self._device, dtype=torch.float32)
         self.initial_velocity = torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self._markers_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        self._half_init_lin_vel_x = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
-        self._half_init_lin_vel_y = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
-        self._half_init_ang_vel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
 
     def create_logs(self) -> None:
         """
@@ -195,12 +186,7 @@ class GoToPositionTask(TaskCore):
         for randomizer in self.randomizers:
             randomizer.observations(observations=self._task_data)
 
-        # Check if it reached half of the initial linear and angular velocity
-        self._half_init_lin_vel_x = torch.abs(self.initial_velocity[:, 0] / 2) >= torch.abs(self._robot.root_com_vel_w[self._env_ids, 0])
-        self._half_init_lin_vel_y = torch.abs(self.initial_velocity[:, 1] / 2) >= torch.abs(self._robot.root_com_vel_w[self._env_ids, 1])
-        self._half_init_ang_vel = torch.abs(self.initial_velocity[:, 5] / 2) >= torch.abs(self._robot.root_com_vel_w[self._env_ids, -1])
-
-
+  
         # Concatenate the task observations with the robot observations
         return torch.concat((self._task_data, self._robot.get_observations()), dim=-1)
 

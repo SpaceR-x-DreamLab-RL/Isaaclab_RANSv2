@@ -15,6 +15,8 @@ from ..robots_cfg import CuboRobotCfg
 
 from .robot_core import RobotCore
 
+import numpy as np
+
 
 class CuboRobot(RobotCore):
 
@@ -169,6 +171,9 @@ class CuboRobot(RobotCore):
                 actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
             )
             self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
+            
+        # print("Actions after processing: ", self._actions[:5])
+        # print("Thrust actions: ", self._thrust_action[:5])
 
         # Log data for monitoring
         self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
@@ -202,7 +207,7 @@ class CuboRobot(RobotCore):
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
     def configure_gym_env_spaces(self):
-        single_action_space = spaces.MultiDiscrete([2] * self._robot_cfg.num_thrusters)
+        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(self._robot_cfg.num_thrusters,), dtype=np.float32)
         action_space = vector.utils.batch_space(single_action_space, self._num_envs)
 
         return single_action_space, action_space

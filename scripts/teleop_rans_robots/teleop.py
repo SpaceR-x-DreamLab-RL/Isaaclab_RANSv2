@@ -1,9 +1,13 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to run a keyboard teleoperation with Isaac Lab manipulation environments."""
+"""Script to run teleoperation with Isaac Lab manipulation environments.
+
+Supports multiple input devices (e.g., keyboard, spacemouse, gamepad) and devices
+configured within the environment (including OpenXR-based hand tracking or motion
+controllers)."""
 
 """Launch Isaac Sim Simulator first."""
 
@@ -13,13 +17,17 @@ from collections.abc import Callable
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Keyboard teleoperation for Isaac Lab environments.")
+parser = argparse.ArgumentParser(description="Teleoperation for Isaac Lab environments.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
 parser.add_argument(
     "--teleop_device",
     type=str,
     default="keyboard",
-    help="Device for interacting with environment. Examples: keyboard, spacemouse, gamepad, handtracking, manusvive",
+    help=(
+        "Teleop device. Set here (legacy) or via the environment config. If using the environment config, pass the"
+        " device key/name defined under 'teleop_devices' (it can be a custom name, not necessarily 'handtracking')."
+        " Built-ins: keyboard, spacemouse, gamepad. Not all tasks support all built-ins."
+    ),
 )
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--sensitivity", type=float, default=1.0, help="Sensitivity factor.")
@@ -50,6 +58,7 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import logging
 
 import gymnasium as gym
 import torch
@@ -68,6 +77,9 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 if args_cli.enable_pinocchio:
     import isaaclab_tasks.manager_based.manipulation.pick_place  # noqa: F401
+    
+# import logger
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:

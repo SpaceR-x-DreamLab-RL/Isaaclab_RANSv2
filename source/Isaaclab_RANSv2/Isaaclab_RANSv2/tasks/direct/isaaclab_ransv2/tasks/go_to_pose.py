@@ -296,6 +296,10 @@ class GoToPoseTask(TaskCore):
         """
 
         super().reset(env_ids, gen_actions=gen_actions, env_seeds=env_seeds)
+        
+        # Randomizes goals and initial conditions
+        self.set_goals(env_ids)
+        self.set_initial_conditions(env_ids)
 
         # Make sure the position error and position dist are up to date after the reset
         self._position_error[env_ids] = (
@@ -390,8 +394,8 @@ class GoToPoseTask(TaskCore):
             + self._target_headings[env_ids]
             + math.pi
         )
-        # initial_pose[:, 0] = r * torch.cos(theta) + self._target_positions[env_ids, 0]
-        # initial_pose[:, 1] = r * torch.sin(theta) + self._target_positions[env_ids, 1]
+        initial_pose[:, 0] = r * torch.cos(theta) + self._target_positions[env_ids, 0]
+        initial_pose[:, 1] = r * torch.sin(theta) + self._target_positions[env_ids, 1]
         initial_pose[:, 2] = self._robot_origins[env_ids, 2]
 
         # Orientation

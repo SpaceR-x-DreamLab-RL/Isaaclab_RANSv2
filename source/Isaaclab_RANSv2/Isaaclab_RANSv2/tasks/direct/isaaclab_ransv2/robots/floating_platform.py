@@ -15,6 +15,8 @@ from ..robots_cfg import FloatingPlatformRobotCfg
 
 from .robot_core import RobotCore
 
+import numpy as np
+
 
 class FloatingPlatformRobot(RobotCore):
 
@@ -200,7 +202,13 @@ class FloatingPlatformRobot(RobotCore):
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
     def configure_gym_env_spaces(self):
-        single_action_space = spaces.MultiDiscrete([2] * self._robot_cfg.num_thrusters)
+        # single_action_space = spaces.MultiDiscrete([2] * self._robot_cfg.num_thrusters)
+        # action_space = vector.utils.batch_space(single_action_space, self._num_envs)
+
+        # return single_action_space, action_space
+        
+        # TODO: Multidiscrete on rsl_rl
+        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(self._robot_cfg.num_thrusters,), dtype=np.float32)
         action_space = vector.utils.batch_space(single_action_space, self._num_envs)
 
         return single_action_space, action_space
