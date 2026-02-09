@@ -245,9 +245,9 @@ class TrackVelocitiesTask(TaskCore):
         self._goal_reached += goal_is_reached
 
         # Update logs (exponential moving average to see the performance at the end of the episode)
-        self.scalar_logger.log("task_reward", "EMA/linear_velocity", linear_velocity_rew)
-        self.scalar_logger.log("task_reward", "EMA/lateral_velocity", lateral_velocity_rew)
-        self.scalar_logger.log("task_reward", "EMA/angular_velocity", angular_velocity_rew)
+        self.scalar_logger.log("task_reward", "EMA/linear_velocity", linear_velocity_rew * self._task_cfg.linear_velocity_weight)
+        self.scalar_logger.log("task_reward", "EMA/lateral_velocity", lateral_velocity_rew * self._task_cfg.lateral_velocity_weight)
+        self.scalar_logger.log("task_reward", "EMA/angular_velocity", angular_velocity_rew * self._task_cfg.angular_velocity_weight)
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
@@ -501,9 +501,17 @@ class TrackVelocitiesTask(TaskCore):
         marker_scale = torch.ones((self._num_envs, 3), dtype=torch.float32, device=self._device)
         marker_pos[:, :2] = self._robot.root_link_pos_w[:, :2]
         marker_pos[:, 2] = self._robot._robot_cfg.marker_height
-        marker_heading = self._robot.heading_w + torch.atan2(
-            self._lateral_velocity_target, self._linear_velocity_target
-        )
+        
+        # Calculate heading based on enabled velocity components
+        if self._task_cfg.enable_lateral_velocity and self._task_cfg.enable_linear_velocity:
+            marker_heading = self._robot.heading_w + torch.atan2(
+                self._lateral_velocity_target, self._linear_velocity_target
+            )
+        elif self._task_cfg.enable_linear_velocity:
+            marker_heading = self._robot.heading_w + math.pi * (self._linear_velocity_target < 0)
+        else:
+            marker_heading = self._robot.heading_w + math.pi / 2.0
+        
         marker_orientation[:, 0] = torch.cos(marker_heading * 0.5)
         marker_orientation[:, 3] = torch.sin(marker_heading * 0.5)
         marker_scale[:, 0] = (
@@ -517,12 +525,14 @@ class TrackVelocitiesTask(TaskCore):
             * self._task_cfg.visualization_linear_velocity_scale
         )
         self.goal_linvel_visualizer.visualize(marker_pos, marker_orientation, marker_scale)
+        
         # Update the target angular velocity marker
         marker_pos[:, 2] = self._robot._robot_cfg.marker_height
-        marker_heading = self._robot.heading_w + math.pi / 2.0
+        # Use absolute value to ensure positive scale, but track direction via heading
+        marker_heading = self._robot.heading_w + math.pi / 2.0 + math.pi * (self._angular_velocity_target < 0)
         marker_orientation[:, 0] = torch.cos(marker_heading * 0.5)
         marker_orientation[:, 3] = torch.sin(marker_heading * 0.5)
-        marker_scale[:, 0] = self._angular_velocity_target * self._task_cfg.visualization_angular_velocity_scale
+        marker_scale[:, 0] = torch.abs(self._angular_velocity_target) * self._task_cfg.visualization_angular_velocity_scale
         self.goal_angvel_visualizer.visualize(marker_pos, marker_orientation, marker_scale)
 
         # Update the robot velocity marker
@@ -543,10 +553,12 @@ class TrackVelocitiesTask(TaskCore):
             * self._task_cfg.visualization_linear_velocity_scale
         )
         self.robot_linvel_visualizer.visualize(marker_pos, marker_orientation, marker_scale)
+        
         # Update the robot angular velocity marker
         marker_pos[:, 2] = self._robot._robot_cfg.marker_height + 0.2
-        marker_heading = self._robot.heading_w + math.pi / 2.0
+        # Use absolute value to ensure positive scale, but track direction via heading
+        marker_heading = self._robot.heading_w + math.pi / 2.0 + math.pi * (self._robot.root_com_ang_vel_w[:, -1] < 0)
         marker_orientation[:, 0] = torch.cos(marker_heading * 0.5)
         marker_orientation[:, 3] = torch.sin(marker_heading * 0.5)
-        marker_scale[:, 0] = self._robot.root_com_ang_vel_w[:, -1] * self._task_cfg.visualization_angular_velocity_scale
+        marker_scale[:, 0] = torch.abs(self._robot.root_com_ang_vel_w[:, -1]) * self._task_cfg.visualization_angular_velocity_scale
         self.robot_angvel_visualizer.visualize(marker_pos, marker_orientation, marker_scale)

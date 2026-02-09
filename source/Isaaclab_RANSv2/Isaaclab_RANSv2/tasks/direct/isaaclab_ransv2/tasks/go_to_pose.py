@@ -6,7 +6,7 @@
 import math
 import torch
 
-from isaaclab.markers import BICOLOR_DIAMOND_CFG, PIN_ARROW_CFG, VisualizationMarkers
+from isaaclab.markers import ARROW_CFG, PIN_ARROW_CFG, VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 
 from ..tasks_cfg import GoToPoseCfg
@@ -128,8 +128,7 @@ class GoToPoseTask(TaskCore):
         self.scalar_logger.add_log("task_state", "EMA/position_distance", "ema")
         self.scalar_logger.add_log("task_state", "EMA/heading_distance", "ema")
         self.scalar_logger.add_log("task_state", "EMA/boundary_distance", "ema")
-        self.scalar_logger.add_log("task_reward", "AVG/position", "mean")
-        self.scalar_logger.add_log("task_reward", "AVG/heading", "mean")
+        self.scalar_logger.add_log("task_reward", "AVG/position_heading", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/linear_velocity", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/angular_velocity", "max")
         self.scalar_logger.add_log("task_reward", "AVG/boundary", "min")
@@ -244,8 +243,6 @@ class GoToPoseTask(TaskCore):
         ] = (self._task_cfg.angular_velocity_max_value - self._task_cfg.angular_velocity_min_value)
         # boundary reward
         boundary_rew = torch.exp(-boundary_dist / self._task_cfg.boundary_exponential_reward_coeff)
-        # progress reward
-        progress_rew = progress * (self._task_cfg.maximum_robot_distance - self._position_dist)
 
         # Checks if the goal is reached
         position_goal_is_reached = (self._position_dist < self._task_cfg.position_tolerance).int()
@@ -255,11 +252,10 @@ class GoToPoseTask(TaskCore):
         self._goal_reached += goal_is_reached  # if it is add 1
 
         # Update logs (exponential moving average to see the performance at the end of the episode)
-        self.scalar_logger.log("task_reward", "AVG/position", position_rew)
-        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew)
-        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew)
+        self.scalar_logger.log("task_reward", "AVG/position_heading", position_rew * heading_rew * self._task_cfg.pose_weight)
+        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew * self._task_cfg.linear_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew * self._task_cfg.angular_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew * self._task_cfg.boundary_weight)
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
@@ -267,7 +263,6 @@ class GoToPoseTask(TaskCore):
             + linear_velocity_rew * self._task_cfg.linear_velocity_weight
             + angular_velocity_rew * self._task_cfg.angular_velocity_weight
             + boundary_rew * self._task_cfg.boundary_weight
-            + progress_rew * self._task_cfg.progress_weight
         ) + self._robot.compute_rewards()
 
     def reset(
@@ -327,11 +322,11 @@ class GoToPoseTask(TaskCore):
         )
 
         task_completed = torch.zeros_like(self._goal_reached, dtype=torch.long)
-        task_completed = torch.where(
-            self._goal_reached > self._task_cfg.reset_after_n_steps_in_tolerance,
-            ones,
-            task_completed,
-        )
+        # task_completed = torch.where(
+        #     self._goal_reached > self._task_cfg.reset_after_n_steps_in_tolerance,
+        #     ones,
+        #     task_completed,
+        # )
         return task_failed, task_completed
 
     def set_goals(self, env_ids: torch.Tensor) -> None:
@@ -445,9 +440,13 @@ class GoToPoseTask(TaskCore):
 
         # Define the visual markers and edit their properties
         goal_marker_cfg = PIN_ARROW_CFG.copy()
-        robot_marker_cfg = BICOLOR_DIAMOND_CFG.copy()
+        robot_marker_cfg = ARROW_CFG.copy()
         goal_marker_cfg.prim_path = f"/Visuals/Command/task_{self._task_uid}/goal_pose"
         robot_marker_cfg.prim_path = f"/Visuals/Command/task_{self._task_uid}/robot_pose"
+        robot_marker_cfg.markers["arrow"].visual_material.diffuse_color = (1.0, 0.8, 0.01) # Yellow
+        robot_marker_cfg.markers["arrow"].arrow_body_radius = 0.025
+        robot_marker_cfg.markers["arrow"].arrow_head_radius = 0.05
+        
         # We should create only one of them.
         self.goal_pos_visualizer = VisualizationMarkers(goal_marker_cfg)
         self.robot_pos_visualizer = VisualizationMarkers(robot_marker_cfg)

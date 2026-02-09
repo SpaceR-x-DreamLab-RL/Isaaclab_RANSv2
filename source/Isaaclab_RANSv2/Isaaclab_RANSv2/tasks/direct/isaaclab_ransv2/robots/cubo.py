@@ -16,6 +16,7 @@ from ..robots_cfg import CuboRobotCfg
 from .robot_core import RobotCore
 
 import numpy as np
+import warp as wp
 
 
 class CuboRobot(RobotCore):
@@ -118,68 +119,93 @@ class CuboRobot(RobotCore):
             self._robot.set_joint_effort_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
 
     def process_actions(self, actions: torch.Tensor):
-        """Process the actions for the robot.
+        # """Process the actions for the robot.
 
-        Expects either binary actions: 0 or 1, or continuous actions: [0, 1].
+        # Expects either binary actions: 0 or 1, or continuous actions: [0, 1].
 
-        - First, clip the actions to the action space limits. This is done to avoid violating the robot's limits.
-        - Second, apply the action randomizers to the actions. This is done to add noise to the actions, apply
-          different scaling factors to the actions, etc.
-        - Third, format the actions to send to the actuators.
+        # - First, clip the actions to the action space limits. This is done to avoid violating the robot's limits.
+        # - Second, apply the action randomizers to the actions. This is done to add noise to the actions, apply
+        #   different scaling factors to the actions, etc.
+        # - Third, format the actions to send to the actuators.
 
-        Args:
-            actions (torch.Tensor): The actions to process."""
+        # Args:
+        #     actions (torch.Tensor): The actions to process."""
 
-        # Enforce action limits at the robot level
-        actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
-        actions.clip_(min=0.0, max=1.0)
-        # Store the unaltered actions, by default the robot should only observe the unaltered actions.
-        self._previous_unaltered_actions = self._unaltered_actions.clone()
-        self._unaltered_actions = actions.clone()
+        # # Enforce action limits at the robot level
+        # actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
+        # actions.clip_(min=0.0, max=1.0)
+        # # Store the unaltered actions, by default the robot should only observe the unaltered actions.
+        # self._previous_unaltered_actions = self._unaltered_actions.clone()
+        # self._unaltered_actions = actions.clone()
 
-        # Apply action randomizers
-        for randomizer in self.randomizers:
-            randomizer.actions(dt=self.scene.physics_dt, actions=actions)
+        # # Apply action randomizers
+        # for randomizer in self.randomizers:
+        #     randomizer.actions(dt=self.scene.physics_dt, actions=actions)
 
-        self._previous_actions = self._actions.clone()
-        self._actions = actions
+        # self._previous_actions = self._actions.clone()
+        # self._actions = actions
 
-        # Calculate the number of active thrusters (those with a value of 1)
-        n_active_thrusters = torch.sum(actions[:, : self._robot_cfg.num_thrusters], dim=1, keepdim=True)
-        # Determine thrust scaling factor
-        if self._robot_cfg.split_thrust:
-            # Calculate thrust scale as max thrust divided by the number of active thrusters
-            thrust_scale = torch.where(
-                n_active_thrusters > 0,
-                self._robot_cfg.max_thrust / n_active_thrusters,
-                torch.tensor(0.0, device=actions.device),
-            )
-        else:
-            thrust_scale = self._robot_cfg.max_thrust
+        # # Calculate the number of active thrusters (those with a value of 1)
+        # n_active_thrusters = torch.sum(actions[:, : self._robot_cfg.num_thrusters], dim=1, keepdim=True)
+        # # Determine thrust scaling factor
+        # if self._robot_cfg.split_thrust:
+        #     # Calculate thrust scale as max thrust divided by the number of active thrusters
+        #     thrust_scale = torch.where(
+        #         n_active_thrusters > 0,
+        #         self._robot_cfg.max_thrust / n_active_thrusters,
+        #         torch.tensor(0.0, device=actions.device),
+        #     )
+        # else:
+        #     thrust_scale = self._robot_cfg.max_thrust
 
-        # Apply thrust to thrusters, based on whether reaction wheel is present
-        self._thrust_action[:, :, -1] = actions[:, : self._robot_cfg.num_thrusters].float() * thrust_scale
-        # transform the 2D thrust actions into 3D forces and torques with x and y components set to zero and z components based on the thrust actions
-        # self._thrust_action = self._thrust_action.unsqueeze(2).expand(-1, -1, 3)
-        # self._thrust_action = torch.cat(
-        #    (torch.zeros_like(self._thrust_action[:, :, :2]), self._thrust_action[:, :, 2:]), dim=2
-        # )
+        # # Apply thrust to thrusters, based on whether reaction wheel is present
+        # self._thrust_action[:, :, -1] = actions[:, : self._robot_cfg.num_thrusters].float() * thrust_scale
+        # # transform the 2D thrust actions into 3D forces and torques with x and y components set to zero and z components based on the thrust actions
+        # # self._thrust_action = self._thrust_action.unsqueeze(2).expand(-1, -1, 3)
+        # # self._thrust_action = torch.cat(
+        # #    (torch.zeros_like(self._thrust_action[:, :, :2]), self._thrust_action[:, :, 2:]), dim=2
+        # # )
 
-        if self._robot_cfg.has_reaction_wheel:
-            # Separate continuous control for reaction wheel
-            self._reaction_wheel_action = (
-                actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
-            )
-            self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
+        # if self._robot_cfg.has_reaction_wheel:
+        #     # Separate continuous control for reaction wheel
+        #     self._reaction_wheel_action = (
+        #         actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
+        #     )
+        #     self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
             
-        # print("Actions after processing: ", self._actions[:5])
-        # print("Thrust actions: ", self._thrust_action[:5])
+        # # print("Actions after processing: ", self._actions[:5])
+        # # print("Thrust actions: ", self._thrust_action[:5])
 
-        # Log data for monitoring
-        self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
-        if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
+        # # Log data for monitoring
+        # self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
+        # if self._robot_cfg.has_reaction_wheel:
+        #     self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
+        """
+        Process the actions for the robot. Expects continuous actions in the range [-1, 1].
+            - actions[:,0] = forward/backward thrust
+            - actions[:,1] = left/right thrust
+            - actions[:,2] = yaw thrust
+        """
+        
+        self._thrust_action.fill_(0.0)  # Reset thrust action
+        wp_actions = wp.from_torch(actions, dtype=wp.vec3f)
+        wp_thrust_action = wp.from_torch(self._thrust_action, dtype=wp.vec3f)
+        
+        
+        wp.launch(
+            kernel=compute_actions_kernel,
+            dim=self._num_envs,
+            inputs=[
+                wp_actions, 
+                wp_thrust_action, 
+                1.0 #self._robot_cfg.max_thrust
+            ],
+            device=self._device,
+        )
+        
+        self._thrust_action = wp.to_torch(wp_thrust_action)
+        
     def compute_physics(self):
         pass  # Model motor + ackermann steering here
 
@@ -207,7 +233,7 @@ class CuboRobot(RobotCore):
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
     def configure_gym_env_spaces(self):
-        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(self._robot_cfg.num_thrusters,), dtype=np.float32)
+        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(self._robot_cfg.action_space,), dtype=np.float32)
         action_space = vector.utils.batch_space(single_action_space, self._num_envs)
 
         return single_action_space, action_space
@@ -434,3 +460,69 @@ class CuboRobot(RobotCore):
         rigid body's actor frame.
         """
         return math_utils.quat_apply_inverse(self.root_com_quat_w, self.root_com_ang_vel_w)
+
+
+@wp.kernel
+def compute_actions_kernel(
+    actions: wp.array(dtype=wp.vec3f), 
+    thrust_action: wp.array(dtype=wp.vec3f, ndim=2), 
+    max_thrust: float # Passed explicitly
+):
+    tid = wp.tid()
+    
+    # Load the action for this environment
+    act = actions[tid]
+    
+    # Initialize local thruster values
+    t0 = 0.0
+    t1 = 0.0
+    t2 = 0.0
+    t3 = 0.0
+    t4 = 0.0
+    t5 = 0.0
+    t6 = 0.0
+    t7 = 0.0
+    
+    # Forward/Back (actions[0])
+    if act[0] != 0.0:
+        mag = wp.abs(act[0]) * max_thrust
+        if act[0] > 0.0:
+            t1 += mag
+            t6 += mag
+        else:
+            t2 += mag
+            t5 += mag
+
+    # Left/Right (actions[1])
+    if act[1] != 0.0:
+        mag = wp.abs(act[1]) * max_thrust
+        if act[1] > 0.0:
+            t0 += mag
+            t3 += mag
+        else:
+            t4 += mag
+            t7 += mag
+
+    # Yaw (actions[2])
+    if act[2] != 0.0:
+        mag = wp.abs(act[2]) * max_thrust
+        if act[2] < 0.0: 
+            t0 += mag
+            t2 += mag
+            t4 += mag
+            t6 += mag
+        else:
+            t1 += mag
+            t3 += mag
+            t5 += mag
+            t7 += mag
+
+    # Clamp and Write to Global Memory
+    thrust_action[tid, 0] = wp.vec(0.0, 0.0, wp.clamp(t0, 0.0, 1.0))
+    thrust_action[tid, 1] = wp.vec(0.0, 0.0, wp.clamp(t1, 0.0, 1.0))
+    thrust_action[tid, 2] = wp.vec(0.0, 0.0, wp.clamp(t2, 0.0, 1.0))
+    thrust_action[tid, 3] = wp.vec(0.0, 0.0, wp.clamp(t3, 0.0, 1.0))
+    thrust_action[tid, 4] = wp.vec(0.0, 0.0, wp.clamp(t4, 0.0, 1.0))
+    thrust_action[tid, 5] = wp.vec(0.0, 0.0, wp.clamp(t5, 0.0, 1.0))
+    thrust_action[tid, 6] = wp.vec(0.0, 0.0, wp.clamp(t6, 0.0, 1.0))
+    thrust_action[tid, 7] = wp.vec(0.0, 0.0, wp.clamp(t7, 0.0, 1.0))

@@ -6,7 +6,7 @@
 import math
 import torch
 
-from isaaclab.markers import BICOLOR_DIAMOND_CFG, PIN_ARROW_CFG, VisualizationMarkers
+from isaaclab.markers import ARROW_CFG, PIN_ARROW_CFG, VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 
 from ..tasks_cfg import GoThroughPosesCfg
@@ -200,6 +200,7 @@ class GoThroughPosesTask(TaskCore):
         self.scalar_logger.add_log("task_reward", "AVG/angular_velocity", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/boundary", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/heading", "mean")
+        self.scalar_logger.add_log("task_reward", "AVG/target_heading", "mean")
         self.scalar_logger.add_log("task_reward", "AVG/progress", "mean")
         self.scalar_logger.add_log("task_reward", "SUM/num_goals", "sum")
 
@@ -400,12 +401,13 @@ class GoThroughPosesTask(TaskCore):
         self._previous_position_dist[reached_ids] = 0
 
         # Update logs
-        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew)
-        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew)
-        self.scalar_logger.log("task_reward", "AVG/progress", progress_rew)
-        self.scalar_logger.log("task_reward", "SUM/num_goals", goal_reached)
+        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew * self._task_cfg.linear_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew * self._task_cfg.angular_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew * self._task_cfg.boundary_weight)
+        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew * self._task_cfg.position_heading_weight)
+        self.scalar_logger.log("task_reward", "AVG/target_heading", target_heading_rew * self._task_cfg.position_heading_weight)
+        self.scalar_logger.log("task_reward", "AVG/progress", progress_rew * self._task_cfg.progress_weight)
+        self.scalar_logger.log("task_reward", "SUM/num_goals", goal_reached * self._task_cfg.reached_bonus)
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
@@ -699,16 +701,20 @@ class GoThroughPosesTask(TaskCore):
             0.5,
         )
         goal_marker_cfg_red = PIN_ARROW_CFG.copy()
-        robot_marker_cfg = BICOLOR_DIAMOND_CFG.copy()
+        robot_marker_cfg = ARROW_CFG.copy()
         goal_marker_cfg_red.prim_path = f"/Visuals/Command/task_{self._task_uid}/next_goal"
         goal_marker_cfg_grey.prim_path = f"/Visuals/Command/task_{self._task_uid}/passed_goals"
         goal_marker_cfg_green.prim_path = f"/Visuals/Command/task_{self._task_uid}/current_goals"
         robot_marker_cfg.prim_path = f"/Visuals/Command/task_{self._task_uid}/robot_pose"
+        robot_marker_cfg.markers["arrow"].visual_material.diffuse_color = (1.0, 0.8, 0.01) # Yellow
+        robot_marker_cfg.markers["arrow"].arrow_body_radius = 0.025
+        robot_marker_cfg.markers["arrow"].arrow_head_radius = 0.05
         # We should create only one of them.
         self.next_goal_visualizer = VisualizationMarkers(goal_marker_cfg_red)
         self.passed_goals_visualizer = VisualizationMarkers(goal_marker_cfg_grey)
         self.current_goals_visualizer = VisualizationMarkers(goal_marker_cfg_green)
         self.robot_pos_visualizer = VisualizationMarkers(robot_marker_cfg)
+        
 
     def update_task_visualization(self) -> None:
         """Updates the visual marker to the scene.

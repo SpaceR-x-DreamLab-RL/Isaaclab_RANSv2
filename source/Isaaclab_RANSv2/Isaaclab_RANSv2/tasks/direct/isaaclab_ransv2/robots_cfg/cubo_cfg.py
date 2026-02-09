@@ -27,7 +27,7 @@ class CuboRobotCfg(RobotCoreCfg):
     robot_name: str = "Cubo"
 
     robot_cfg: ArticulationCfg = CUBO_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    marker_height = 0.75
+    marker_height = 0.85
     has_reaction_wheel = False
     num_thrusters = 8
 
@@ -88,7 +88,7 @@ class CuboRobotCfg(RobotCoreCfg):
     )
 
     # Spaces
-    observation_space: int = num_thrusters + 1 * has_reaction_wheel
+    observation_space: int = 3 #num_thrusters + 1 * has_reaction_wheel
     state_space: int = 0
-    action_space: int = num_thrusters + 1 * has_reaction_wheel
+    action_space: int = 3 #num_thrusters + 1 * has_reaction_wheel
     gen_space: int = 0  # TODO: Add the generative space from the randomization

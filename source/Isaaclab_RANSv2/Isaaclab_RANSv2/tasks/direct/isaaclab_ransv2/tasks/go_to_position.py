@@ -265,11 +265,11 @@ class GoToPositionTask(TaskCore):
         self._goal_reached *= goal_is_reached  # if not set the value to 0
         self._goal_reached += goal_is_reached  # if it is add 1
         # Update logs for rewards
-        self.scalar_logger.log("task_reward", "AVG/position", position_rew)
-        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew)
-        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew)
-        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew)
+        self.scalar_logger.log("task_reward", "AVG/position", position_rew * self._task_cfg.position_weight)
+        self.scalar_logger.log("task_reward", "AVG/heading", heading_rew * self._task_cfg.heading_weight)
+        self.scalar_logger.log("task_reward", "AVG/linear_velocity", linear_velocity_rew * self._task_cfg.linear_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/angular_velocity", angular_velocity_rew * self._task_cfg.angular_velocity_weight)
+        self.scalar_logger.log("task_reward", "AVG/boundary", boundary_rew * self._task_cfg.boundary_weight)
         # Return the reward by combining the different components and adding the robot rewards
         return (
             position_rew * self._task_cfg.position_weight
@@ -329,11 +329,11 @@ class GoToPositionTask(TaskCore):
         )
 
         task_completed = torch.zeros_like(self._goal_reached, dtype=torch.long)
-        task_completed = torch.where(
-            self._goal_reached > self._task_cfg.reset_after_n_steps_in_tolerance,
-            ones,
-            task_completed,
-        )
+        # task_completed = torch.where(
+        #     self._goal_reached > self._task_cfg.reset_after_n_steps_in_tolerance,
+        #     ones,
+        #     task_completed,
+        # )
         return task_failed, task_completed
 
     def set_goals(self, env_ids: torch.Tensor) -> None:
