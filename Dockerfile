@@ -197,7 +197,8 @@ ARG ISAACLAB_DEV=true
 ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-ARG ISAACLAB_COMMIT_SHA="429ff008e2a726bd7d35c7f3342596e17a9c044f" # 2025-09-19
+# 2025-02-11 Flatdict bug fix
+ARG ISAACLAB_COMMIT_SHA="45fda1753b0b99a1855bbc2840ff022ae705bb7b"
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
@@ -211,8 +212,7 @@ RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
         "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${extension}" ; \
     fi ; \
     done && \
-    ln -sf "${ISAAC_SIM_PATH}" "${ISAACLAB_PATH}/_isaac_sim" ; \
-    ${ISAACLAB_PATH}/isaaclab.sh --install ; \
+    ln -sf "${ISAAC_SIM_PATH}" "${ISAACLAB_PATH}/_isaac_sim"; \
     fi
 
 ## Reinforcement Learning
