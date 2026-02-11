@@ -94,6 +94,11 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import Isaaclab_RANSv2.tasks  # noqa: F401
+from Isaaclab_RANSv2.tasks.direct.isaaclab_ransv2.utils.wandb_naming import (
+    get_robot_and_task_from_env_cfg,
+    get_wandb_env_name,
+    get_wandb_run_name,
+)
 
 algorithm = args_cli.algorithm.lower()
 agent_cfg_entry_point = "rl_games_cfg_entry_point" if algorithm in ["ppo"] else f"rl_games_{algorithm}_cfg_entry_point"
@@ -136,15 +141,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
+    # default wandb/experiment naming: env-based project, run name = timstamp_algorithm_robot_task_lib
+    robot_name, task_name = get_robot_and_task_from_env_cfg(env_cfg)
+    env_name = get_wandb_env_name(env_cfg, args_cli.task)
+    date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
     # specify directory for logging experiments
     if "AutoEnvGen" in args_cli.task:
-        print(f"Using entity: {args_cli.task}")
-        agent_cfg["params"]["config"]["name"] = env.env.cfg.robot_name + "-" + env.env.cfg.task_name
-        print(f'Using project: {agent_cfg["params"]["config"]["name"]}')
-        log_root_path = os.path.join(
-            "logs", "rl_games", args_cli.task.split("-")[2], agent_cfg["params"]["config"]["name"]
-        )
-        config_name = agent_cfg["params"]["wandb"]["project"]
+        config_name = env_name
+        agent_cfg["params"]["config"]["name"] = config_name
+        log_root_path = os.path.join("logs", "rl_games", config_name)
     else:
         config_name = agent_cfg["params"]["config"]["name"]
         log_root_path = os.path.join("logs", "rl_games", config_name)
@@ -155,10 +161,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             log_root_path = os.path.join(agent_cfg["pbt"]["directory"], log_root_path)
 
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
-    # specify directory for logging runs
-    log_dir = agent_cfg["params"]["config"].get("full_experiment_name", datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+    # specify directory for logging runs: <date-time>_<algorithm>_<robot>_<task>_<learning_library>
+    if args_cli.wandb_name is None and (getattr(env_cfg, "robot_name", None) is not None or "AutoEnvGen" in args_cli.task):
+        log_dir = get_wandb_run_name(date_str, algorithm, robot_name, task_name, "rl_games")
+    else:
+        log_dir = agent_cfg["params"]["config"].get(
+            "full_experiment_name", datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        )
     # set directory into agent config
-    # logging directory path: <train_dir>/<full_experiment_name>
     agent_cfg["params"]["config"]["train_dir"] = log_root_path
     agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
     wandb_project = config_name if args_cli.wandb_project_name is None else args_cli.wandb_project_name
@@ -238,18 +248,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             raise ValueError("Weights and Biases entity must be specified for tracking.")
         import wandb
 
-        group_name = ""
-        date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-        if "AutoEnvGen" in args_cli.task:
-            name = agent_cfg["params"]["config"]["name"]
-            agent_cfg["params"]["wandb"]["project"] = args_cli.wandb_project_name
-            agent_cfg["params"]["wandb"]["entity"] = args_cli.wandb_entity
-            experiment_name = f"{date_str}_{name}_{algorithm}_rlgames" + "_seed_" + str(args_cli.seed)
-            wandb_project = agent_cfg["params"]["wandb"]["project"]
-            args_cli.wandb_entity = agent_cfg["params"]["wandb"]["entity"]
-            group_name = agent_cfg["params"]["wandb"]["group"]
-
+        group_name = agent_cfg["params"]["wandb"].get("group", "")
+        agent_cfg["params"]["wandb"]["project"] = wandb_project
+        agent_cfg["params"]["wandb"]["entity"] = args_cli.wandb_entity
 
         wandb.init(
             project=wandb_project,
