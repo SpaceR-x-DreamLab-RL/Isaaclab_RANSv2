@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import numpy as np
 import torch
 from gymnasium import spaces, vector
 
@@ -46,6 +47,7 @@ class PinguRobot(RobotCore):
         self._thrust_action = torch.zeros(
             (self._num_envs, self._robot_cfg.num_thrusters, 3), device=self._device, dtype=torch.float32
         )
+        self._arm_action = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         if self._robot_cfg.has_reaction_wheel:
             self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
 
@@ -53,6 +55,15 @@ class PinguRobot(RobotCore):
         super().run_setup(robot)
         self._thrusters_dof_idx, _ = self._robot.find_bodies(self._robot_cfg.thrusters_dof_name)
         self._root_idx, _ = self._robot.find_bodies([self._robot_cfg.root_id_name])
+
+        # Set up arm joint indices
+        self._left_arm_dof_idx, _ = self._robot.find_joints(
+            [self._robot_cfg.arm_dof_names[0], self._robot_cfg.arm_dof_names[1]]
+        )
+        self._right_arm_dof_idx, _ = self._robot.find_joints(
+            [self._robot_cfg.arm_dof_names[2], self._robot_cfg.arm_dof_names[3]]
+        )
+        self._arm_dof_idx = self._left_arm_dof_idx + self._right_arm_dof_idx
 
         if self._robot_cfg.has_reaction_wheel:
             self._reaction_wheel_dof_idx, _ = self._robot.find_joints(self._robot_cfg.reaction_wheel_dof_name)
@@ -102,13 +113,9 @@ class PinguRobot(RobotCore):
         self._previous_actions[env_ids] = 0
 
     def set_initial_conditions(self, env_ids: torch.Tensor):
-        # thrust_reset = torch.zeros_like(self._thrust_action)
-        # self._robot.set_external_force_and_torque(
-        #    thrust_reset, thrust_reset, body_ids=self._thrusters_dof_idx, env_ids=env_ids
-        # )
-        locking_joints = torch.zeros((len(env_ids), 8), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
-        self._robot.set_joint_velocity_target(locking_joints, env_ids=env_ids)
-        self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
+        # Reset arm joints to zero position
+        arm_reset = torch.zeros((len(env_ids), 4), device=self._device)
+        self._robot.set_joint_position_target(arm_reset, joint_ids=self._arm_dof_idx, env_ids=env_ids)
 
         if self._robot_cfg.has_reaction_wheel:
             rw_reset = torch.zeros_like(self._reaction_wheel_action)
@@ -130,6 +137,8 @@ class PinguRobot(RobotCore):
 
         # Enforce action limits at the robot level
         actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
+        # Clip thrusters to [0, 1] but arms can be in [-1, 1] or [0, 1] depending on use
+        # For now, keep the original clipping to maintain compatibility
         actions.clip_(min=0.0, max=1.0)
         # Store the unaltered actions, by default the robot should only observe the unaltered actions.
         self._previous_unaltered_actions = self._unaltered_actions.clone()
@@ -163,10 +172,29 @@ class PinguRobot(RobotCore):
         #    (torch.zeros_like(self._thrust_action[:, :, :2]), self._thrust_action[:, :, 2:]), dim=2
         # )
 
+        # Process arm actions (left_shoulder, left_elbow, right_shoulder, right_elbow)
+        # Actions are in range [0, 1], convert to actual joint positions
+        # Get joint limits from robot data
+        arm_action_start_idx = self._robot_cfg.num_thrusters
+        if self._robot_cfg.has_reaction_wheel:
+            arm_action_start_idx += 1
+        
+        # Extract arm actions and convert from [0, 1] to actual joint positions using limits
+        raw_arm_actions = actions[:, arm_action_start_idx : arm_action_start_idx + 4]
+        
+        # Get joint position limits
+        joint_limits = self._robot.data.soft_joint_pos_limits[:, self._arm_dof_idx]  # (num_envs, 4, 2)
+        lower_limits = joint_limits[:, :, 0]  # (num_envs, 4)
+        upper_limits = joint_limits[:, :, 1]  # (num_envs, 4)
+        
+        # Map from [0, 1] to [lower_limit, upper_limit]
+        self._arm_action = lower_limits + raw_arm_actions * (upper_limits - lower_limits)
+
         if self._robot_cfg.has_reaction_wheel:
             # Separate continuous control for reaction wheel
             self._reaction_wheel_action = (
-                actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
+                actions[:, self._robot_cfg.num_thrusters : self._robot_cfg.num_thrusters + 1]
+                * self._robot_cfg.reaction_wheel_scale
             )
             self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
 
@@ -184,9 +212,15 @@ class PinguRobot(RobotCore):
         for randomizer in self.randomizers:
             randomizer.update(dt=self.scene.physics_dt, actions=self._actions)
 
+        # Apply thrust forces
         self._robot.set_external_force_and_torque(
             self._thrust_action, torch.zeros_like(self._thrust_action), body_ids=self._thrusters_dof_idx
         )
+        
+        # Apply arm position targets
+        self._robot.set_joint_position_target(self._arm_action, joint_ids=self._arm_dof_idx)
+        
+        # Apply reaction wheel effort (if present)
         if self._robot_cfg.has_reaction_wheel:
             self._robot.set_joint_effort_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
 
@@ -195,14 +229,20 @@ class PinguRobot(RobotCore):
         velocity: torch.Tensor,
         env_ids: torch.Tensor | None = None,
     ) -> None:
-        # Arms and reaction wheel
-        arms_rw_vel = torch.zeros((env_ids.shape[0], 5), device=self._device)
-        velocity = torch.cat([velocity[:, :2], velocity[:, -1].unsqueeze(-1), arms_rw_vel], dim=1)
+        # Arms (4 joints) and reaction wheel (1 joint if present)
+        num_extra_joints = 4 + (1 if self._robot_cfg.has_reaction_wheel else 0)
+        extra_vel = torch.zeros((env_ids.shape[0], num_extra_joints), device=self._device)
+        velocity = torch.cat([velocity[:, :2], velocity[:, -1].unsqueeze(-1), extra_vel], dim=1)
         position = torch.zeros_like(velocity)
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
     def configure_gym_env_spaces(self):
-        single_action_space = spaces.MultiDiscrete([2] * self._robot_cfg.num_thrusters)
+        # Combined action space: discrete for thrusters (binary) + continuous for arms
+        # For simplicity, we use Box for all actions [0, 1] range
+        action_dim = self._robot_cfg.num_thrusters + 4  # 8 thrusters + 4 arm joints
+        if self._robot_cfg.has_reaction_wheel:
+            action_dim += 1
+        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(action_dim,), dtype=np.float32)
         action_space = vector.utils.batch_space(single_action_space, self._num_envs)
 
         return single_action_space, action_space

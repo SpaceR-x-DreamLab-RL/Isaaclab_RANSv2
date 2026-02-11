@@ -33,6 +33,7 @@ class PinguRobotCfg(RobotCoreCfg):
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     root_id_name = "base_link"
+    arm_dof_names = ["left_shoulder_joint", "left_elbow_joint", "right_shoulder_joint", "right_elbow_joint"]
     rew_action_rate_scale = -0.12 / 8
     rew_joint_accel_scale = -2.5e-6
 
@@ -88,7 +89,7 @@ class PinguRobotCfg(RobotCoreCfg):
     )
 
     # Spaces
-    observation_space: int = num_thrusters + 1 * has_reaction_wheel
+    observation_space: int = num_thrusters + 1 * has_reaction_wheel + 4  # 4 arm joints
     state_space: int = 0
-    action_space: int = num_thrusters + 1 * has_reaction_wheel
+    action_space: int = num_thrusters + 1 * has_reaction_wheel + 4  # 4 arm joints
     gen_space: int = 0  # TODO: Add the generative space from the randomization
