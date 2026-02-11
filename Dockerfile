@@ -197,8 +197,7 @@ ARG ISAACLAB_DEV=true
 ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-# 2025-02-11 Flatdict bug fix
-ARG ISAACLAB_COMMIT_SHA="45fda1753b0b99a1855bbc2840ff022ae705bb7b"
+ARG ISAACLAB_COMMIT_SHA="45fda1753b0b99a1855bbc2840ff022ae705bb7b" # v2.2.0
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
@@ -225,6 +224,28 @@ RUN if [[ "${DEV,,}" = true && "${DREAMER_DEV,,}" = true ]]; then \
     git clone "${DREAMER_REMOTE}" "${DREAMER_PATH}" --branch "${DREAMER_BRANCH}" && \
     git -C "${DREAMER_PATH}" reset --hard "${DREAMER_COMMIT_SHA}" && \
     "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${DREAMER_PATH}" ; \
+    fi
+
+ARG SKRL_DEV=true
+ARG SKRL_PATH="/root/skrl"
+ARG SKRL_REMOTE="https://github.com/Toni-SM/skrl.git"
+ARG SKRL_BRANCH="main"
+ARG SKRL_COMMIT_SHA="90adbbc1593ebb7ea5f98f39bd22f7e88d1198b2" # v1.4.3
+RUN if [[ "${DEV,,}" = true && "${SKRL_DEV,,}" = true ]]; then \
+    git clone "${SKRL_REMOTE}" "${SKRL_PATH}" --branch "${SKRL_BRANCH}" && \
+    git -C "${SKRL_PATH}" reset --hard "${SKRL_COMMIT_SHA}" && \
+    "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${SKRL_PATH}" ; \
+    fi
+
+ARG RSL_RL_DEV=true
+ARG RSL_RL_PATH="/root/rsl_rl"
+ARG RSL_RL_REMOTE="https://github.com/leggedrobotics/rsl_rl.git"
+ARG RSL_RL_BRANCH="main"
+ARG RSL_RL_COMMIT_SHA="91c7554e67f7f9c39fbcddf46fb42b82c07f4144" # rsl_rl v3.3.0
+RUN if [[ "${DEV,,}" = true && "${RSL_RL_DEV,,}" = true ]]; then \
+    git clone "${RSL_RL_REMOTE}" "${RSL_RL_PATH}" --branch "${RSL_RL_BRANCH}" && \
+    git -C "${RSL_RL_PATH}" reset --hard "${RSL_RL_COMMIT_SHA}" && \
+    "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${RSL_RL_PATH}" ; \
     fi
 
 ##################
