@@ -63,7 +63,8 @@ class PinguRobot(RobotCore):
         self._right_arm_dof_idx, _ = self._robot.find_joints(
             [self._robot_cfg.arm_dof_names[2], self._robot_cfg.arm_dof_names[3]]
         )
-        self._arm_dof_idx = self._left_arm_dof_idx + self._right_arm_dof_idx
+        # Combine left and right arm indices into a single list
+        self._arm_dof_idx = list(self._left_arm_dof_idx) + list(self._right_arm_dof_idx)
 
         if self._robot_cfg.has_reaction_wheel:
             self._reaction_wheel_dof_idx, _ = self._robot.find_joints(self._robot_cfg.reaction_wheel_dof_name)
@@ -137,8 +138,8 @@ class PinguRobot(RobotCore):
 
         # Enforce action limits at the robot level
         actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
-        # Clip thrusters to [0, 1] but arms can be in [-1, 1] or [0, 1] depending on use
-        # For now, keep the original clipping to maintain compatibility
+        # All actions (thrusters and arms) are in [0, 1] range
+        # Arm actions will be mapped to actual joint limits in process_actions()
         actions.clip_(min=0.0, max=1.0)
         # Store the unaltered actions, by default the robot should only observe the unaltered actions.
         self._previous_unaltered_actions = self._unaltered_actions.clone()
@@ -173,8 +174,8 @@ class PinguRobot(RobotCore):
         # )
 
         # Process arm actions (left_shoulder, left_elbow, right_shoulder, right_elbow)
-        # Actions are in range [0, 1], convert to actual joint positions
-        # Get joint limits from robot data
+        # Actions are in range [0, 1], which we map to actual joint position limits
+        # This allows the full range of motion for each joint regardless of its limits
         arm_action_start_idx = self._robot_cfg.num_thrusters
         if self._robot_cfg.has_reaction_wheel:
             arm_action_start_idx += 1
@@ -182,12 +183,12 @@ class PinguRobot(RobotCore):
         # Extract arm actions and convert from [0, 1] to actual joint positions using limits
         raw_arm_actions = actions[:, arm_action_start_idx : arm_action_start_idx + 4]
         
-        # Get joint position limits
+        # Get joint position limits from robot data
         joint_limits = self._robot.data.soft_joint_pos_limits[:, self._arm_dof_idx]  # (num_envs, 4, 2)
         lower_limits = joint_limits[:, :, 0]  # (num_envs, 4)
         upper_limits = joint_limits[:, :, 1]  # (num_envs, 4)
         
-        # Map from [0, 1] to [lower_limit, upper_limit]
+        # Map from [0, 1] to [lower_limit, upper_limit] for each joint
         self._arm_action = lower_limits + raw_arm_actions * (upper_limits - lower_limits)
 
         if self._robot_cfg.has_reaction_wheel:
