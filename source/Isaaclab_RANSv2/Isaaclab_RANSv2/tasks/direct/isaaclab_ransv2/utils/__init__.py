@@ -3,3 +3,4 @@ from .object_storage import ObjectStorage
 from .rng_utils import PerEnvSeededRNG
 from .track_generator import TrackGenerator
 from .metrics.eval_metrics import EvalMetrics
+from .thruster_mapping import compute_thruster_mapping

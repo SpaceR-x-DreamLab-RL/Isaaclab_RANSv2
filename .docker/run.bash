@@ -34,7 +34,7 @@ WITH_GUI="${WITH_GUI:-true}"
 WITH_HISTORY="${WITH_HISTORY:-true}"
 # Flag to enable mounting the source code as a volume
 WITH_DEV_VOLUME="${WITH_DEV_VOLUME:-true}"
-WITH_DEV_ISAACLAB="${WITH_DEV_ISAACLAB:-false}"
+WITH_DEV_ISAACLAB="${WITH_DEV_ISAACLAB:-true}"
 # Flag to install Docker if it is not available
 ENSURE_DOCKER="${ENSURE_DOCKER:-false}"
 # Volumes to mount inside the container

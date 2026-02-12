@@ -46,6 +46,8 @@ class PinguRobotCfg(RobotCoreCfg):
     """Maximum thrust of the thrusters in Newtons"""
     split_thrust = True
     """Split the thrust between the thrusters"""
+    arms_action_scalar=1.0
+    """Scalar to adjust the magnitude of the arm actions(shoulder + elbow)"""
 
     # Randomization
     mass_rand_cfg: MassRandomizationCfg = MassRandomizationCfg(

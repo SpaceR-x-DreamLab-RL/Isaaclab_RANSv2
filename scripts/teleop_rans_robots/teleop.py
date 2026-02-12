@@ -283,18 +283,18 @@ def main() -> None:
             elif action[2] < 0:  # rotate ccw
                 print("Mapping rotate ccw action")
                 new_action = torch.tensor([[0, 0, -1, 0, 0, 0, 0, 0]], device=action.device)
-            elif action[3] > 0:  # left arm shoulder
-                print("Mapping left arm shoulder action +v")
-                new_action = torch.tensor([[0, 0, 0, 1, 0, 0, 0, 0]], device=action.device)
-            elif action[3] < 0:  # left arm shoulder
-                print("Mapping left arm shoulder action -v")
-                new_action = torch.tensor([[0, 0, 0, -1, 0, 0, 0, 0]], device=action.device)
-            elif action[4] > 0:  # right arm shoulder
-                print("Mapping right arm shoulder action +v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 1, 0, 0]], device=action.device)
-            elif action[4] < 0:  # right arm shoulder
-                print("Mapping right arm shoulder action -v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, -1, 0, 0]], device=action.device)
+            elif action[3] > 0:  # left arm elbow
+                print("Mapping left arm elbow action +v")
+                new_action = torch.tensor([[0, 0, 0, 0, 1, 0, 0, 0]], device=action.device)
+            elif action[3] < 0:  # left arm elbow
+                print("Mapping left arm elbow action -v")
+                new_action = torch.tensor([[0, 0, 0, 0, -1, 0, 0, 0]], device=action.device)
+            elif action[4] > 0:  # right arm elbow
+                print("Mapping right arm elbow action +v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
+            elif action[4] < 0:  # right arm elbow
+                print("Mapping right arm elbow action -v")
+                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, -1, 0]], device=action.device)
             elif action[5] > 0:  # reaction wheel positive
                 print("Mapping reaction wheel action +v")
                 new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)

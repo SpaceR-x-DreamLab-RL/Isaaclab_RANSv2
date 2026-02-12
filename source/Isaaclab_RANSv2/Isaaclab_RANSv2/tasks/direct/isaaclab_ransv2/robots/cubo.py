@@ -17,6 +17,7 @@ from .robot_core import RobotCore
 
 import numpy as np
 import warp as wp
+from ..utils import compute_thruster_mapping
 
 
 class CuboRobot(RobotCore):
@@ -194,7 +195,7 @@ class CuboRobot(RobotCore):
         
         
         wp.launch(
-            kernel=compute_actions_kernel,
+            kernel=compute_thruster_mapping,
             dim=self._num_envs,
             inputs=[
                 wp_actions, 
