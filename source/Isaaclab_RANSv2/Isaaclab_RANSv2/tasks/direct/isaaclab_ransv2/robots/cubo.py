@@ -80,6 +80,9 @@ class CuboRobot(RobotCore):
         action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
         joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
 
+        # TODO: Optionally add a penalty for using thrusters if direct_thruster_control 
+        # is True AND use_reaction_wheel is True
+
         # Log data
         self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
@@ -115,7 +118,7 @@ class CuboRobot(RobotCore):
         self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
 
         if self._robot_cfg.has_reaction_wheel:
-            rw_reset = torch.zeros_like(self._reaction_wheel_action)
+            rw_reset = torch.zeros((len(env_ids), 1), device=self._device, dtype=torch.float32)
             self._robot.set_joint_velocity_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
             self._robot.set_joint_effort_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
 
@@ -183,29 +186,65 @@ class CuboRobot(RobotCore):
         #     self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
         """
-        Process the actions for the robot. Expects continuous actions in the range [-1, 1].
+        Process the actions for the robot. Expects continuous actions in the range [-1, 1]. This operates when the flag `direct_thruster_control` is False. Thrust (body-frame or direct) uses leading dimensions; auxiliary actuators use trailing
+        indices (reaction wheel at -1, others at -2, -3, ... if added).
+
+        When direct_thruster_control is False (body-frame):
             - actions[:,0] = forward/backward thrust
             - actions[:,1] = left/right thrust
             - actions[:,2] = yaw thrust
+            - actions[:, -1] = reaction wheel (if has_reaction_wheel)
+
+        When direct_thruster_control is True:
+            - actions[:, 0:8] = direct thruster commands (one per thruster)
+            - actions[:, -1] = reaction wheel (if has_reaction_wheel)
         """
-        
-        self._thrust_action.fill_(0.0)  # Reset thrust action
-        wp_actions = wp.from_torch(actions, dtype=wp.vec3f)
-        wp_thrust_action = wp.from_torch(self._thrust_action, dtype=wp.vec3f)
-        
-        
-        wp.launch(
-            kernel=compute_thruster_mapping,
-            dim=self._num_envs,
-            inputs=[
-                wp_actions, 
-                wp_thrust_action, 
-                1.0 #self._robot_cfg.max_thrust
-            ],
-            device=self._device,
+        self._thrust_action.fill_(0.0)
+
+        if self._robot_cfg.direct_thruster_control:
+            # Direct thruster mode: store actions for obs/rewards, apply randomizers if enabled
+            actions = actions[:, : self._dim_robot_act].float()
+
+            self._previous_unaltered_actions = self._unaltered_actions.clone()
+            self._unaltered_actions = actions.clone()
+            for randomizer in self.randomizers:
+                randomizer.actions(dt=self.scene.physics_dt, actions=actions)
+            self._previous_actions = self._actions.clone()
+            self._actions = actions
+
+            n_thrust = self._robot_cfg.num_thrusters
+            thrust_mag = (actions[:, :n_thrust] * 0.5 + 0.5) * self._robot_cfg.max_thrust
+            self._thrust_action[:, :, 2] = thrust_mag # .clamp(0.0, self._robot_cfg.max_thrust)
+
+        else:
+            # Body-frame control: leading 3 = (forward, left/right, yaw); pass signed to kernel
+            wp_actions = wp.from_torch(actions[:, :3].contiguous(), 
+            dtype=wp.vec3f)
+            body_act = actions[:, :3].float().contiguous()
+            wp_actions = wp.from_torch(body_act, dtype=wp.vec3f)
+            wp_thrust_action = wp.from_torch(self._thrust_action, dtype=wp.vec3f)
+            wp.launch(
+                kernel=compute_thruster_mapping,
+                dim=self._num_envs,
+                inputs=[
+                    wp_actions,
+                    wp_thrust_action,
+                    float(self._robot_cfg.max_thrust),
+                ],
+                device=self._device,
+            )
+            self._thrust_action = wp.to_torch(wp_thrust_action)
+
+        if self._robot_cfg.has_reaction_wheel:
+            self._reaction_wheel_action = (
+                actions[:, -1:] * self._robot_cfg.reaction_wheel_scale
+            )
+
+        self.scalar_logger.log(
+            "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
         )
-        
-        self._thrust_action = wp.to_torch(wp_thrust_action)
+        if self._robot_cfg.has_reaction_wheel:
+            self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
         
     def compute_physics(self):
         pass  # Model motor + ackermann steering here
@@ -233,11 +272,12 @@ class CuboRobot(RobotCore):
         position = torch.zeros_like(velocity)
         self._robot.write_joint_state_to_sim(position, velocity, env_ids=env_ids)
 
-    def configure_gym_env_spaces(self):
-        single_action_space = spaces.Box(low=0.0, high=1.0, shape=(self._robot_cfg.action_space,), dtype=np.float32)
-        action_space = vector.utils.batch_space(single_action_space, self._num_envs)
-
-        return single_action_space, action_space
+    # def configure_gym_env_spaces(self):
+    #     single_action_space = spaces.Box(
+    #         low=-1.0, high=1.0, shape=(self._robot_cfg.action_space,), dtype=np.float32
+    #     )
+    #     action_space = vector.utils.batch_space(single_action_space, self._num_envs)
+    #     return single_action_space, action_space
 
     def activateSensors(self, sensor_type: str, filter: list):
         if sensor_type == "contacts":
@@ -461,69 +501,3 @@ class CuboRobot(RobotCore):
         rigid body's actor frame.
         """
         return math_utils.quat_apply_inverse(self.root_com_quat_w, self.root_com_ang_vel_w)
-
-
-@wp.kernel
-def compute_actions_kernel(
-    actions: wp.array(dtype=wp.vec3f), 
-    thrust_action: wp.array(dtype=wp.vec3f, ndim=2), 
-    max_thrust: float # Passed explicitly
-):
-    tid = wp.tid()
-    
-    # Load the action for this environment
-    act = actions[tid]
-    
-    # Initialize local thruster values
-    t0 = 0.0
-    t1 = 0.0
-    t2 = 0.0
-    t3 = 0.0
-    t4 = 0.0
-    t5 = 0.0
-    t6 = 0.0
-    t7 = 0.0
-    
-    # Forward/Back (actions[0])
-    if act[0] != 0.0:
-        mag = wp.abs(act[0]) * max_thrust
-        if act[0] > 0.0:
-            t1 += mag
-            t6 += mag
-        else:
-            t2 += mag
-            t5 += mag
-
-    # Left/Right (actions[1])
-    if act[1] != 0.0:
-        mag = wp.abs(act[1]) * max_thrust
-        if act[1] > 0.0:
-            t0 += mag
-            t3 += mag
-        else:
-            t4 += mag
-            t7 += mag
-
-    # Yaw (actions[2])
-    if act[2] != 0.0:
-        mag = wp.abs(act[2]) * max_thrust
-        if act[2] < 0.0: 
-            t0 += mag
-            t2 += mag
-            t4 += mag
-            t6 += mag
-        else:
-            t1 += mag
-            t3 += mag
-            t5 += mag
-            t7 += mag
-
-    # Clamp and Write to Global Memory
-    thrust_action[tid, 0] = wp.vec(0.0, 0.0, wp.clamp(t0, 0.0, 1.0))
-    thrust_action[tid, 1] = wp.vec(0.0, 0.0, wp.clamp(t1, 0.0, 1.0))
-    thrust_action[tid, 2] = wp.vec(0.0, 0.0, wp.clamp(t2, 0.0, 1.0))
-    thrust_action[tid, 3] = wp.vec(0.0, 0.0, wp.clamp(t3, 0.0, 1.0))
-    thrust_action[tid, 4] = wp.vec(0.0, 0.0, wp.clamp(t4, 0.0, 1.0))
-    thrust_action[tid, 5] = wp.vec(0.0, 0.0, wp.clamp(t5, 0.0, 1.0))
-    thrust_action[tid, 6] = wp.vec(0.0, 0.0, wp.clamp(t6, 0.0, 1.0))
-    thrust_action[tid, 7] = wp.vec(0.0, 0.0, wp.clamp(t7, 0.0, 1.0))

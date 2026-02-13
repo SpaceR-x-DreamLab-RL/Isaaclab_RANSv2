@@ -28,8 +28,9 @@ class CuboRobotCfg(RobotCoreCfg):
 
     robot_cfg: ArticulationCfg = CUBO_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     marker_height = 0.85
-    has_reaction_wheel = False
+    has_reaction_wheel = True
     num_thrusters = 8
+    direct_thruster_control = True
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     root_id_name = "base_link"
@@ -60,23 +61,21 @@ class CuboRobotCfg(RobotCoreCfg):
     noisy_actions_cfg: NoisyActionsCfg = NoisyActionsCfg(
         enable=False,
         randomization_modes=["uniform"],
-        slices=[(0, 8)],
+        slices=[(0, 8)],  # covers both modes (3/4 or 8/9 dims); slice is clamped to action dim
         max_delta=[0.1],
         std=[0.025],
-        clip_actions=[(0, 1)],
+        clip_actions=[(-1, 1)],  # continuous action space [-1, 1]
     )
     action_rescaler_cfg: ActionsRescalerCfg = ActionsRescalerCfg(
         enable=False,
         randomization_modes=["uniform"],
         slices=[(0, 8)],
         rescaling_ranges=[(0.8, 1.0)],
-        clip_actions=[(0, 1)],
+        clip_actions=[(-1, 1)],
     )
 
     if has_reaction_wheel:
-        reaction_wheel_dof_name = [
-            "reaction_wheel",
-        ]
+        reaction_wheel_dof_name = ["rw_revolute_joint"]  # must match joint name in Cubo USD/URDF (same as Pingu)
         reaction_wheel_scale = 0.1  # [Nm]
 
     # Sensors
@@ -87,8 +86,20 @@ class CuboRobotCfg(RobotCoreCfg):
         debug_vis=True,
     )
 
-    # Spaces
-    observation_space: int = 3 #num_thrusters + 1 * has_reaction_wheel
+    # Spaces (depend on direct_thruster_control)
+    # [thrust_dims..., auxiliary_dims] with reaction wheel at -1, others at -2, -3, ...
+    # When direct_thruster_control=False: 3 thrust + 1*has_reaction_wheel
+    # When direct_thruster_control=True: num_thrusters thrust + 1*has_reaction_wheel
     state_space: int = 0
-    action_space: int = 3 #num_thrusters + 1 * has_reaction_wheel
     gen_space: int = 0  # TODO: Add the generative space from the randomization
+
+    @property
+    def action_space(self) -> int:
+        if self.direct_thruster_control:
+            return self.num_thrusters + (1 if self.has_reaction_wheel else 0)
+        return 3 + (1 if self.has_reaction_wheel else 0)
+
+    @property
+    def observation_space(self) -> int:
+        """Robot observation dim (same as action dim: last action as obs)."""
+        return self.action_space

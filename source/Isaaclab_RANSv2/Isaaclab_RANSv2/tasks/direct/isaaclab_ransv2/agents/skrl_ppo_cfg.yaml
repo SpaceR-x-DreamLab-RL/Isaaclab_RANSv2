@@ -17,7 +17,7 @@ models:
         input: STATES
         layers: [32, 32]
         activations: elu
-    output: ACTIONS
+    output: tanh(ACTIONS)
   value:  # see deterministic_model parameters
     class: DeterministicMixin
     clip_actions: False
@@ -82,5 +82,5 @@ agent:
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 4800
+  timesteps: 15000
   environment_info: log
