@@ -182,9 +182,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg["agent"]["experiment"]["experiment_name"]:
         log_dir_name += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
 
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "skrl", env_name)
-    log_root_path = os.path.abspath(log_root_path)
+    # specify directory for logging experiments (use experiment.directory from config when set, so play finds runs)
+    exp_directory = (agent_cfg["agent"]["experiment"].get("directory") or "").strip()
+    log_root_name = exp_directory if exp_directory else env_name
+    log_root_path = os.path.abspath(os.path.join("logs", "skrl", log_root_name))
     agent_cfg["agent"]["experiment"]["directory"] = log_root_path
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # The Ray Tune workflow extracts experiment name using the logging line below, hence, do not change it (see PR #2346, comment-2819298849)
@@ -192,12 +193,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["agent"]["experiment"]["experiment_name"] = log_dir_name
     log_dir = os.path.join(log_root_path, log_dir_name)
 
-    # wandb: project = env name, run name = full run name (sub-projects can override via config)
+    # wandb: project = log root name (so e.g. AutoEnvGen from config), run name = full run name
     if agent_cfg["agent"]["experiment"].get("wandb"):
         wk = agent_cfg["agent"]["experiment"].get("wandb_kwargs") or {}
         agent_cfg["agent"]["experiment"]["wandb_kwargs"] = {
             **wk,
-            "project": env_name,
+            "project": log_root_name,
             "name": log_dir_name,
         }
 

@@ -141,12 +141,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
 
-    # default wandb/experiment naming: env-based project, run name = date_algorithm_robot_task_library
+    # default wandb/experiment naming: use config experiment_name when set (so train/play use same log folder)
     robot_name, task_name = get_robot_and_task_from_env_cfg(env_cfg)
     env_name = get_wandb_env_name(env_cfg, args_cli.task)
     algorithm = getattr(args_cli, "algorithm", None) or _algorithm_from_agent(args_cli.agent)
     date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    if args_cli.experiment_name is None:
+    if args_cli.experiment_name is None and not (getattr(agent_cfg, "experiment_name", None) or "").strip():
         agent_cfg.experiment_name = env_name
     if args_cli.run_name is None:
         agent_cfg.run_name = f"{algorithm}_{robot_name}_{task_name}_rsl_rl"

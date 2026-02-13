@@ -146,14 +146,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_name = get_wandb_env_name(env_cfg, args_cli.task)
     date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    # specify directory for logging experiments
-    if "AutoEnvGen" in args_cli.task:
+    # specify directory for logging experiments (use config name when set so train/play use same folder)
+    config_name = (agent_cfg["params"]["config"].get("name") or "").strip()
+    if "AutoEnvGen" in args_cli.task and not config_name:
         config_name = env_name
         agent_cfg["params"]["config"]["name"] = config_name
-        log_root_path = os.path.join("logs", "rl_games", config_name)
-    else:
-        config_name = agent_cfg["params"]["config"]["name"]
-        log_root_path = os.path.join("logs", "rl_games", config_name)
+    if not config_name:
+        config_name = agent_cfg["params"]["config"].get("name") or env_name
+    log_root_path = os.path.join("logs", "rl_games", config_name)
     if "pbt" in agent_cfg:
         if agent_cfg["pbt"]["directory"] == ".":
             log_root_path = os.path.abspath(log_root_path)
