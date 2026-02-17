@@ -197,7 +197,7 @@ ARG ISAACLAB_DEV=true
 ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-ARG ISAACLAB_COMMIT_SHA="45fda1753b0b99a1855bbc2840ff022ae705bb7b" # v2.2.0
+ARG ISAACLAB_COMMIT_SHA="cec935237f44f78c78017d56d0c6aa557c59a137" #IsaacLab v2.2.0 / SpaceR release v0.0.1 new version with assets
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
@@ -213,6 +213,12 @@ RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
     done && \
     ln -sf "${ISAAC_SIM_PATH}" "${ISAACLAB_PATH}/_isaac_sim"; \
     fi
+
+ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/v0.0.1-assets/spacer-thedreamlab-assets.zip"
+ARG ASSETS_PATH="${ISAACLAB_PATH}/source/isaaclab_assets/data"
+RUN wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}" && \
+    unzip -d "${ASSETS_PATH}" /tmp/spacer-dreamlab-assets.zip && \
+    rm /tmp/spacer-dreamlab-assets.zip
 
 ## Reinforcement Learning
 ARG DREAMER_DEV=true
