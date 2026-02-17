@@ -197,7 +197,7 @@ ARG ISAACLAB_DEV=true
 ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-ARG ISAACLAB_COMMIT_SHA="cec935237f44f78c78017d56d0c6aa557c59a137" #IsaacLab v2.2.0 / SpaceR release v0.0.1 new version with assets
+ARG ISAACLAB_COMMIT_SHA="d5d53a529f32bb6cf116821175f18f7d9d08deba" #IsaacLab v2.2.0 / SpaceR release v0.0.1 new version with assets
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \

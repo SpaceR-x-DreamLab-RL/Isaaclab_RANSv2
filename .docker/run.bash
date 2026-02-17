@@ -6,6 +6,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" &>/dev/null && pwd)"
 REPOSITORY_DIR="$(dirname "${SCRIPT_DIR}")"
 ISAACLAB_DIR="$(dirname "${REPOSITORY_DIR}")/Isaaclab"
+SPACER_DREAMLAB_ASSETS_DIR="${ISAACLAB_DIR}/source/isaaclab_assets/data"
+ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/v0.0.1-assets/spacer-thedreamlab-assets.zip"
 
 ## If the current user is not in the docker group, all docker commands will be run as root
 WITH_SUDO=()
@@ -81,6 +83,23 @@ if [[ "${WITH_DEV_VOLUME,,}" = true ]]; then
     )
 fi
 if [[ "${WITH_DEV_ISAACLAB,,}" = true ]]; then
+    if [ -d "${ISAACLAB_DIR}" ]; then
+        echo "The 'Isaaclab' directory already exists."
+    else
+        echo "No Isaaclab local. Plese clone from https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git outside Isaaclab_RANSv2 repo and run again."
+        exit 1
+    fi
+
+    if [ -d "${SPACER_DREAMLAB_ASSETS_DIR}/Robots" ]; then
+        echo "The '$SPACER_DREAMLAB_ASSETS_DIR/Robots' directory already exists. Skipping download."
+    else
+        echo "The '$SPACER_DREAMLAB_ASSETS_DIR/Robots' directory is missing. Starting download of assets..."
+        wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}"
+        echo "Extracting assets to '${SPACER_DREAMLAB_ASSETS_DIR}'..."
+        unzip -d "${SPACER_DREAMLAB_ASSETS_DIR}" /tmp/spacer-dreamlab-assets.zip
+        rm /tmp/spacer-dreamlab-assets.zip
+    fi
+
     DOCKER_VOLUMES+=(
         "${ISAACLAB_DIR}:/root/isaaclab:rw"
     )
