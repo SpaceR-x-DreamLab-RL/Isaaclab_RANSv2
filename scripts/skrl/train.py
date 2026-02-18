@@ -114,6 +114,12 @@ import isaaclab_tasks  # noqa: F401
 import Isaaclab_RANSv2  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
+from Isaaclab_RANSv2.tasks.direct.isaaclab_ransv2.utils.wandb_naming import (
+    get_robot_and_task_from_env_cfg,
+    get_wandb_env_name,
+    get_wandb_run_name,
+)
+
 # import logger
 logger = logging.getLogger(__name__)
 
@@ -162,29 +168,39 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
     env_cfg.seed = agent_cfg["seed"]
 
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
-    log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Logging experiment in directory: {log_root_path}")
-    if "AutoEnvGen" in args_cli.task:
-        # specify directory for logging runs: {time-stamp}_{run_name}_{ml_framework}_{robot}_{task}
-        log_dir = (
-            datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            + f"_{algorithm}_SKRL_{args_cli.ml_framework}"
-            + f"_{env_cfg.robot_name}_{env_cfg.task_name}"
+    # default wandb/experiment naming: env-based project, run name = date_algorithm_robot_task_library
+    robot_name, task_name = get_robot_and_task_from_env_cfg(env_cfg)
+    env_name = get_wandb_env_name(env_cfg, args_cli.task)
+    date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    learning_library = f"skrl-{args_cli.ml_framework}"
+    if getattr(env_cfg, "robot_name", None) is not None or "AutoEnvGen" in args_cli.task:
+        log_dir_name = get_wandb_run_name(
+            date_time_str, algorithm, robot_name, task_name, learning_library
         )
     else:
-        # specify directory for logging runs: {time-stamp}_{run_name}
-        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
-    # The Ray Tune workflow extracts experiment name using the logging line below, hence, do not change it (see PR #2346, comment-2819298849)
-    print(f"Exact experiment name requested from command line: {log_dir}")
+        log_dir_name = date_time_str + f"_{algorithm}_{args_cli.ml_framework}"
     if agent_cfg["agent"]["experiment"]["experiment_name"]:
-        log_dir += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
-    # set directory into agent config
+        log_dir_name += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
+
+    # specify directory for logging experiments (use experiment.directory from config when set, so play finds runs)
+    exp_directory = (agent_cfg["agent"]["experiment"].get("directory") or "").strip()
+    log_root_name = exp_directory if exp_directory else env_name
+    log_root_path = os.path.abspath(os.path.join("logs", "skrl", log_root_name))
     agent_cfg["agent"]["experiment"]["directory"] = log_root_path
-    agent_cfg["agent"]["experiment"]["experiment_name"] = log_dir
-    # update log_dir
-    log_dir = os.path.join(log_root_path, log_dir)
+    print(f"[INFO] Logging experiment in directory: {log_root_path}")
+    # The Ray Tune workflow extracts experiment name using the logging line below, hence, do not change it (see PR #2346, comment-2819298849)
+    print(f"Exact experiment name requested from command line: {log_dir_name}")
+    agent_cfg["agent"]["experiment"]["experiment_name"] = log_dir_name
+    log_dir = os.path.join(log_root_path, log_dir_name)
+
+    # wandb: project = log root name (so e.g. AutoEnvGen from config), run name = full run name
+    if agent_cfg["agent"]["experiment"].get("wandb"):
+        wk = agent_cfg["agent"]["experiment"].get("wandb_kwargs") or {}
+        agent_cfg["agent"]["experiment"]["wandb_kwargs"] = {
+            **wk,
+            "project": log_root_name,
+            "name": log_dir_name,
+        }
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

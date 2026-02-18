@@ -30,6 +30,7 @@ class PinguRobotCfg(RobotCoreCfg):
     marker_height = 0.9
     has_reaction_wheel = True
     num_thrusters = 8
+    direct_thruster_control = False
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     locking_joint_dof_name = ["x_lock_joint", "y_lock_joint", "base_joint"]
@@ -71,17 +72,15 @@ class PinguRobotCfg(RobotCoreCfg):
         slices=[(0, 8)],
         max_delta=[0.1],
         std=[0.025],
-        clip_actions=[(0, 1)],
+        clip_actions=[(-1, 1)],
     )
     action_rescaler_cfg: ActionsRescalerCfg = ActionsRescalerCfg(
         enable=False,
         randomization_modes=["uniform"],
         slices=[(0, 8)],
         rescaling_ranges=[(0.8, 1.0)],
-        clip_actions=[(0, 1)],
+        clip_actions=[(-1, 1)],
     )
-
-    
 
     # Sensors
     body_contact_forces: ContactSensorCfg = ContactSensorCfg(
@@ -91,8 +90,20 @@ class PinguRobotCfg(RobotCoreCfg):
         debug_vis=True,
     )
 
-    # Spaces
-    observation_space: int = 3 + 5 # Thrusters (8), 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
+    # Spaces (depend on direct_thruster_control)
+    # [thrust_dims..., auxiliary_dims] with reaction wheel at -1, others at -2, -3, ...
+    # When direct_thruster_control=False: 3 movement, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
+    # When direct_thruster_control=True: num_thrusters thrust, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
     state_space: int = 0
-    action_space: int = 8 # 1 Forward/Backward, 1 Left/Right, 1 CW/CCW, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
     gen_space: int = 0  # TODO: Add the generative space from the randomization
+
+    @property
+    def action_space(self) -> int:
+        if self.direct_thruster_control:
+            return self.num_thrusters + 4 + (1 if self.has_reaction_wheel else 0)
+        return 3 + 4 + (1 if self.has_reaction_wheel else 0)
+
+    @property
+    def observation_space(self) -> int:
+        """Robot observation dim (same as action dim: last action as obs)."""
+        return self.action_space

@@ -101,6 +101,11 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import Isaaclab_RANSv2.tasks  # noqa: F401
+from Isaaclab_RANSv2.tasks.direct.isaaclab_ransv2.utils.wandb_naming import (
+    get_robot_and_task_from_env_cfg,
+    get_wandb_env_name,
+    get_wandb_run_name,
+)
 
 
 # import logger
@@ -114,6 +119,18 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
+def _algorithm_from_agent(agent: str) -> str:
+    """Extract algo name from agent entry point (e.g. rsl_rl_ppo-discrete_cfg_entry_point -> ppo-discrete).
+    TODO: Check if this confirms with the way it was done in the previous isaaclab.
+    """
+    if agent == "rsl_rl_cfg_entry_point":
+        return "ppo"
+    prefix, suffix = "rsl_rl_", "_cfg_entry_point"
+    if agent.startswith(prefix) and agent.endswith(suffix):
+        return agent[len(prefix) : -len(suffix)].replace("_", "-")
+    return "ppo"
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Train with RSL-RL agent."""
@@ -123,6 +140,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
+
+    # default wandb/experiment naming: use config experiment_name when set (so train/play use same log folder)
+    robot_name, task_name = get_robot_and_task_from_env_cfg(env_cfg)
+    env_name = get_wandb_env_name(env_cfg, args_cli.task)
+    algorithm = getattr(args_cli, "algorithm", None) or _algorithm_from_agent(args_cli.agent)
+    date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if args_cli.experiment_name is None and not (getattr(agent_cfg, "experiment_name", None) or "").strip():
+        agent_cfg.experiment_name = env_name
+    if args_cli.run_name is None:
+        agent_cfg.run_name = f"{algorithm}_{robot_name}_{task_name}_rsl_rl"
+        if agent_cfg.logger in {"wandb", "neptune"}:
+            full_wandb_run_name = get_wandb_run_name(
+                date_time_str, algorithm, robot_name, task_name, "rsl_rl"
+            )
+            agent_cfg.wandb_project = agent_cfg.experiment_name
+            wandb_kwargs = dict(agent_cfg.wandb_kwargs) if getattr(agent_cfg, "wandb_kwargs", None) else {}
+            wandb_kwargs["name"] = full_wandb_run_name
+            wandb_kwargs["project"] = agent_cfg.wandb_project
+            agent_cfg.wandb_kwargs = wandb_kwargs
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here

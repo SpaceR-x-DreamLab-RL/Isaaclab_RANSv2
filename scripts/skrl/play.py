@@ -149,8 +149,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     elif args_cli.checkpoint:
         resume_path = os.path.abspath(args_cli.checkpoint)
     else:
+        # Match both old run dirs (date_ppo_torch) and new format (date_ppo_robot_task_skrl-torch)
+        run_dir_pattern = f".*_{algorithm}_.*_({args_cli.ml_framework}|skrl-{args_cli.ml_framework})"
         resume_path = get_checkpoint_path(
-            log_root_path, run_dir=f".*_{algorithm}_{args_cli.ml_framework}", other_dirs=["checkpoints"]
+            log_root_path, run_dir=run_dir_pattern, other_dirs=["checkpoints"]
         )
     log_dir = os.path.dirname(os.path.dirname(resume_path))
 

@@ -27,7 +27,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         critic_obs_normalization=False,
         actor_hidden_dims=[64, 64],
         critic_hidden_dims=[64, 64],
-        activation="elu",
+        activation="tanh",
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,

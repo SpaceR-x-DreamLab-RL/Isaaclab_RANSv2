@@ -67,8 +67,8 @@ class AutoEnvGen(DirectRLEnv):
         """Configure the action and observation spaces for the Gym environment."""
         # observation space (unbounded since we don't impose any limits)
         super()._configure_gym_env_spaces()
-        self.single_action_space, self.action_space = self.robot_api.configure_gym_env_spaces()
-        self.actions = sample_space(self.single_action_space, self.sim.device, batch_size=self.num_envs, fill_value=0)
+        # self.single_action_space, self.action_space = self.robot_api.configure_gym_env_spaces()
+        # self.actions = sample_space(self.single_action_space, self.sim.device, batch_size=self.num_envs, fill_value=0)
 
     def edit_cfg(self, cfg: AutoEnvGenCfg) -> AutoEnvGenCfg:
         self.robot_cfg = ROBOT_CFG_FACTORY(cfg.robot_name)
