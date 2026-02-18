@@ -77,22 +77,22 @@ class CuboRobot(RobotCore):
     def compute_rewards(self):
         # TODO: DT should be factored in?
 
-        action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
         joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
 
-        # TODO: Optionally add a penalty for using thrusters if direct_thruster_control 
+        # TODO: Optionally add a penalty for using thrusters if direct_thruster_control
         # is True AND use_reaction_wheel is True
 
         # Log data
-        self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
         self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
 
-        return (
-            action_rate * self._robot_cfg.rew_action_rate_scale
-            + joint_accelerations * self._robot_cfg.rew_joint_accel_scale
-        )
+        reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
+        if self._robot_cfg.direct_thruster_control:
+            action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
+            self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
+            self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
+            reward = reward + action_rate * self._robot_cfg.rew_action_rate_scale
+        return reward
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         task_failed = torch.zeros(self._num_envs, dtype=torch.int32, device=self._device)
@@ -199,19 +199,21 @@ class CuboRobot(RobotCore):
             - actions[:, 0:8] = direct thruster commands (one per thruster)
             - actions[:, -1] = reaction wheel (if has_reaction_wheel)
         """
+        # Common: slice to robot action dim, store for obs/rewards, apply randomizers, update _actions (both modes)
+        actions = actions[:, : self._dim_robot_act].float()
+        self._previous_unaltered_actions = self._unaltered_actions.clone()
+
+        self._unaltered_actions = actions.clone()
+        for randomizer in self.randomizers:
+            randomizer.actions(dt=self.scene.physics_dt, actions=actions)
+            
+        self._previous_actions = self._actions.clone()
+        self._actions = actions
+
         self._thrust_action.fill_(0.0)
 
         if self._robot_cfg.direct_thruster_control:
-            # Direct thruster mode: store actions for obs/rewards, apply randomizers if enabled
-            actions = actions[:, : self._dim_robot_act].float()
-
-            self._previous_unaltered_actions = self._unaltered_actions.clone()
-            self._unaltered_actions = actions.clone()
-            for randomizer in self.randomizers:
-                randomizer.actions(dt=self.scene.physics_dt, actions=actions)
-            self._previous_actions = self._actions.clone()
-            self._actions = actions
-
+            # Direct thruster mode: one command per thruster
             n_thrust = self._robot_cfg.num_thrusters
             thrust_mag = (actions[:, :n_thrust] * 0.5 + 0.5) * self._robot_cfg.max_thrust
             self._thrust_action[:, :, 2] = thrust_mag # .clamp(0.0, self._robot_cfg.max_thrust)
@@ -245,6 +247,9 @@ class CuboRobot(RobotCore):
         )
         if self._robot_cfg.has_reaction_wheel:
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
+
+        # debug print out the full final action vector sent to the robot
+        print("Final action vector sent to the robot: ", self._actions)
         
     def compute_physics(self):
         pass  # Model motor + ackermann steering here

@@ -30,7 +30,7 @@ class CuboRobotCfg(RobotCoreCfg):
     marker_height = 0.85
     has_reaction_wheel = True
     num_thrusters = 8
-    direct_thruster_control = True
+    direct_thruster_control = False
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     root_id_name = "base_link"
@@ -75,7 +75,7 @@ class CuboRobotCfg(RobotCoreCfg):
     )
 
     if has_reaction_wheel:
-        reaction_wheel_dof_name = ["rw_revolute_joint"]  # must match joint name in Cubo USD/URDF (same as Pingu)
+        reaction_wheel_dof_name = ["rw_revolute_joint"]
         reaction_wheel_scale = 0.1  # [Nm]
 
     # Sensors
