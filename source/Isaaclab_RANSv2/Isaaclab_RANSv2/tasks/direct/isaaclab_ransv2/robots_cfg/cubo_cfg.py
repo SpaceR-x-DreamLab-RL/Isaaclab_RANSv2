@@ -36,7 +36,9 @@ class CuboRobotCfg(RobotCoreCfg):
     root_id_name = "base_link"
     rew_action_rate_scale = -0.12 / 8
     rew_joint_accel_scale = -2.5e-6
-
+    penalize_thruster_usage = True
+    rew_thruster_usage_scale = -1.0
+    
     max_thrust = 1.0
     """Maximum thrust of the thrusters in Newtons"""
     split_thrust = True

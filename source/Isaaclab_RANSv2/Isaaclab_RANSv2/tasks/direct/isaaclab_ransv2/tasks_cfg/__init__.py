@@ -18,6 +18,7 @@ from .go_to_pose_cfg import GoToPoseCfg  # noqa: F401, F403
 from .go_to_position_6DoF_cfg import GoToPosition3DCfg  # noqa: F401, F403
 from .go_to_position_cfg import GoToPositionCfg  # noqa: F401, F403
 from .go_to_position_with_obstacles_cfg import GoToPositionWithObstaclesCfg
+from .stabilization_cfg import StabilizationCfg  # noqa: F401, F403
 from .push_block_cfg import PushBlockCfg  # noqa: F401, F403
 from .race_gates_cfg import RaceGatesCfg  # noqa: F401, F403
 from .race_waypoints_cfg import RaceWaypointsCfg  # noqa: F401, F403
@@ -40,3 +41,4 @@ TASK_CFG_FACTORY.register("TrackVelocities", TrackVelocitiesCfg)
 TASK_CFG_FACTORY.register("TrackVelocities3D", TrackVelocities3DCfg)
 TASK_CFG_FACTORY.register("GoToPositionWithObstacles", GoToPositionWithObstaclesCfg)
 TASK_CFG_FACTORY.register("RaceGates", RaceGatesCfg)
+TASK_CFG_FACTORY.register("Stabilization", StabilizationCfg)

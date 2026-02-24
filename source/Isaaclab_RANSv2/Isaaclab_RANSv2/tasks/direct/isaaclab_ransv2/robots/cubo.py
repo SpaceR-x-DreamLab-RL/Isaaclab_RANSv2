@@ -86,7 +86,13 @@ class CuboRobot(RobotCore):
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
         self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
 
-        reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
+        if self._robot_cfg.has_reaction_wheel and self._robot_cfg.penalize_thruster_usage:
+            thruster_usage = torch.sum(torch.square(self._thrust_action[:, :, 2]), dim=1)
+            self.scalar_logger.log("robot_state", "AVG/thruster_usage", thruster_usage)
+            self.scalar_logger.log("robot_reward", "AVG/thruster_usage", thruster_usage)
+            reward = thruster_usage * self._robot_cfg.rew_thruster_usage_scale
+
+        reward += joint_accelerations * self._robot_cfg.rew_joint_accel_scale
         if self._robot_cfg.direct_thruster_control:
             action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
             self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
@@ -247,9 +253,6 @@ class CuboRobot(RobotCore):
         )
         if self._robot_cfg.has_reaction_wheel:
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
-
-        # debug print out the full final action vector sent to the robot
-        print("Final action vector sent to the robot: ", self._actions)
         
     def compute_physics(self):
         pass  # Model motor + ackermann steering here
