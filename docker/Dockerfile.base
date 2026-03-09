@@ -1,0 +1,182 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+# Nvidia Dockerfiles: https://github.com/NVIDIA-Omniverse/IsaacSim-dockerfiles
+# Please check above link for license information.
+
+# Base image
+ARG ISAACSIM_BASE_IMAGE_ARG
+ARG ISAACSIM_VERSION_ARG
+FROM ${ISAACSIM_BASE_IMAGE_ARG}:${ISAACSIM_VERSION_ARG} AS base
+ENV ISAACSIM_VERSION=${ISAACSIM_VERSION_ARG}
+
+# Set default RUN shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Adds labels to the Dockerfile
+LABEL version="2.1.1"
+LABEL description="Dockerfile for building and running the Isaac Lab framework inside Isaac Sim container image."
+
+# Arguments
+# Path to Isaac Sim root folder
+ARG ISAACSIM_ROOT_PATH_ARG
+ENV ISAACSIM_ROOT_PATH=${ISAACSIM_ROOT_PATH_ARG}
+ENV ISAAC_SIM_PYTHON="${ISAACSIM_ROOT_PATH}/python.sh"
+ARG ISAAC_LAB_RANS_V2_PATH_ARG
+ENV ISAAC_LAB_RANS_V2_PATH=${ISAAC_LAB_RANS_V2_PATH_ARG}
+# Path to the Isaac Lab directory
+ARG ISAACLAB_PATH_ARG
+ENV ISAACLAB_PATH=${ISAACLAB_PATH_ARG}
+# Home dir of docker user, typically '/root'
+ARG DOCKER_USER_HOME_ARG
+ENV DOCKER_USER_HOME=${DOCKER_USER_HOME_ARG}
+
+# Set environment variables
+ENV LANG=C.UTF-8
+ENV DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+# Install dependencies and remove cache
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    git-lfs \
+    libglib2.0-0 \
+    ncurses-term \
+    wget && \
+    apt -y autoremove && apt clean autoclean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the Isaac Lab directory (files to exclude are defined in .dockerignore)
+# COPY ../ ${ISAACLAB_PATH}
+
+# # Set up a symbolic link between the installed Isaac Sim root folder and _isaac_sim in the Isaac Lab directory
+# RUN ln -sf ${ISAACSIM_ROOT_PATH} ${ISAACLAB_PATH}/_isaac_sim
+
+# # Install toml dependency
+# RUN ${ISAACLAB_PATH}/isaaclab.sh -p -m pip install toml
+
+# # Install apt dependencies for extensions that declare them in their extension.toml
+# RUN --mount=type=cache,target=/var/cache/apt \
+#     ${ISAACLAB_PATH}/isaaclab.sh -p ${ISAACLAB_PATH}/tools/install_deps.py apt ${ISAACLAB_PATH}/source && \
+#     apt -y autoremove && apt clean autoclean && \
+#     rm -rf /var/lib/apt/lists/*
+
+###################
+### Development ###
+###################
+ARG DEV=true
+
+## Simulation
+ARG ISAACLAB_DEV=true
+# ARG ISAACLAB_PATH="/root/isaaclab"
+ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
+ARG ISAACLAB_BRANCH="main"
+ARG ISAACLAB_COMMIT_SHA="d5d53a529f32bb6cf116821175f18f7d9d08deba" #IsaacLab v2.2.0 / SpaceR release v0.0.1 new version with assets
+# hadolint ignore=SC2044
+ENV TERM=xterm-256color
+RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
+    echo -e "\n# Isaac Lab ${ISAACLAB_COMMIT_SHA}" >> /entrypoint.bash && \
+    echo "export ISAACLAB_PATH=\"${ISAACLAB_PATH}\"" >> /entrypoint.bash && \
+    git clone "${ISAACLAB_REMOTE}" "${ISAACLAB_PATH}" --branch "${ISAACLAB_BRANCH}" && \
+    git -C "${ISAACLAB_PATH}" reset --hard "${ISAACLAB_COMMIT_SHA}" && \
+    git -C "${ISAACLAB_PATH}" lfs pull && \
+    for extension in $(find -L "${ISAACLAB_PATH}/source" -mindepth 1 -maxdepth 1 -type d); do \
+    if [ -f "${extension}/pyproject.toml" ] || [ -f "${extension}/setup.py" ]; then \
+        "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${extension}" ; \
+    fi ; \
+    done && \
+    ln -sf "${ISAACSIM_ROOT_PATH}" "${ISAACLAB_PATH}/_isaac_sim"; \
+    fi
+
+ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/v0.0.1-assets/spacer-thedreamlab-assets.zip"
+ARG ASSETS_PATH="${ISAACLAB_PATH}/source/isaaclab_assets/data"
+RUN wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}" && \
+    unzip -d "${ASSETS_PATH}" /tmp/spacer-dreamlab-assets.zip && \
+    rm /tmp/spacer-dreamlab-assets.zip
+
+## Reinforcement Learning
+ARG RSL_RL_DEV=true
+ARG RSL_RL_PATH="/root/rsl_rl"
+ARG RSL_RL_REMOTE="https://github.com/leggedrobotics/rsl_rl.git"
+ARG RSL_RL_BRANCH="main"
+ARG RSL_RL_COMMIT_SHA="91c7554e67f7f9c39fbcddf46fb42b82c07f4144" # rsl_rl v3.3.0
+RUN if [[ "${DEV,,}" = true && "${RSL_RL_DEV,,}" = true ]]; then \
+    git clone "${RSL_RL_REMOTE}" "${RSL_RL_PATH}" --branch "${RSL_RL_BRANCH}" && \
+    git -C "${RSL_RL_PATH}" reset --hard "${RSL_RL_COMMIT_SHA}" && \
+    "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${RSL_RL_PATH}" ; \
+    fi
+
+
+# for singularity usage, have to create the directories that will binded
+RUN mkdir -p ${ISAACSIM_ROOT_PATH}/kit/cache && \
+    mkdir -p ${DOCKER_USER_HOME}/.cache/ov && \
+    mkdir -p ${DOCKER_USER_HOME}/.cache/pip && \
+    mkdir -p ${DOCKER_USER_HOME}/.cache/nvidia/GLCache &&  \
+    mkdir -p ${DOCKER_USER_HOME}/.nv/ComputeCache && \
+    mkdir -p ${DOCKER_USER_HOME}/.nvidia-omniverse/logs && \
+    mkdir -p ${DOCKER_USER_HOME}/.local/share/ov/data && \
+    mkdir -p ${DOCKER_USER_HOME}/Documents
+
+# for singularity usage, create NVIDIA binary placeholders
+RUN touch /bin/nvidia-smi && \
+    touch /bin/nvidia-debugdump && \
+    touch /bin/nvidia-persistenced && \
+    touch /bin/nvidia-cuda-mps-control && \
+    touch /bin/nvidia-cuda-mps-server && \
+    touch /etc/localtime && \
+    mkdir -p /var/run/nvidia-persistenced && \
+    touch /var/run/nvidia-persistenced/socket
+
+# installing Isaac Lab dependencies
+# use pip caching to avoid reinstalling large packages
+# RUN --mount=type=cache,target=${DOCKER_USER_HOME}/.cache/pip \
+#     ${ISAACLAB_PATH}/isaaclab.sh --install
+
+# HACK: Remove install of quadprog dependency
+# RUN ${ISAACLAB_PATH}/isaaclab.sh -p -m pip uninstall -y quadprog
+
+###############
+### Project ###
+###############
+## Define the workspace of the project
+WORKDIR "${ISAAC_LAB_RANS_V2_PATH}"
+## Copy the source code into the image
+COPY . "${ISAAC_LAB_RANS_V2_PATH}"
+
+## Install project as editable Python package
+# hadolint ignore=SC1091
+RUN "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${ISAAC_LAB_RANS_V2_PATH}/source/Isaaclab_RANSv2"
+
+
+# # aliasing isaaclab.sh and python for convenience
+# RUN echo "export ISAACLAB_PATH=${ISAACLAB_PATH}" >> ${HOME}/.bashrc && \
+#     echo "alias isaaclab=${ISAACLAB_PATH}/isaaclab.sh" >> ${HOME}/.bashrc && \
+#     echo "alias python=${ISAACLAB_PATH}/_isaac_sim/python.sh" >> ${HOME}/.bashrc && \
+#     echo "alias python3=${ISAACLAB_PATH}/_isaac_sim/python.sh" >> ${HOME}/.bashrc && \
+#     echo "alias pip='${ISAACLAB_PATH}/_isaac_sim/python.sh -m pip'" >> ${HOME}/.bashrc && \
+#     echo "alias pip3='${ISAACLAB_PATH}/_isaac_sim/python.sh -m pip'" >> ${HOME}/.bashrc && \
+#     echo "alias tensorboard='${ISAACLAB_PATH}/_isaac_sim/python.sh ${ISAACLAB_PATH}/_isaac_sim/tensorboard'" >> ${HOME}/.bashrc && \
+#     echo "export TZ=$(date +%Z)" >> ${HOME}/.bashrc && \
+#     echo "shopt -s histappend" >> /root/.bashrc && \
+#     echo "PROMPT_COMMAND='history -a'" >> /root/.bashrc
+
+# aliasing isaaclab.sh and python for convenience
+RUN echo "alias python=${ISAACSIM_ROOT_PATH}/python.sh" >> ${HOME}/.bashrc && \
+    echo "alias python3=${ISAACSIM_ROOT_PATH}/python.sh" >> ${HOME}/.bashrc && \
+    echo "alias pip='${ISAACSIM_ROOT_PATH}/python.sh -m pip'" >> ${HOME}/.bashrc && \
+    echo "alias pip3='${ISAACSIM_ROOT_PATH}/python.sh -m pip'" >> ${HOME}/.bashrc && \
+    echo "export TZ=$(date +%Z)" >> ${HOME}/.bashrc && \
+    echo "shopt -s histappend" >> /root/.bashrc && \
+    echo "PROMPT_COMMAND='history -a'" >> /root/.bashrc
+
+
+
+# make working directory as the Isaac Lab directory
+# this is the default directory when the container is run
+WORKDIR ${ISAAC_LAB_RANS_V2_PATH}
