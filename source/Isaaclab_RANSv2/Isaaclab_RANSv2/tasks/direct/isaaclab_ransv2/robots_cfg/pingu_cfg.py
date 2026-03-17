@@ -127,7 +127,7 @@ class PinguRobotCfg(RobotCoreCfg):
     @property
     def action_space(self) -> int:
         if self.direct_thruster_control:
-            return self.num_thrusters + 4 + (1 if self.has_reaction_wheel else 0)
+            return self.num_thrusters + (1 if self.has_reaction_wheel else 0)
         return 3 + 4 + (1 if self.has_reaction_wheel else 0)
 
     @property

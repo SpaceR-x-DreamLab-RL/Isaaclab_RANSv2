@@ -121,6 +121,17 @@ class PinguRobot(RobotCore):
         self.arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self._previous_arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
 
+        # Initialize swing state buffers
+        # 0: Hold Right, 1: Swing to Left, 2: Hold Left, 3: Swing to Right
+        self._swing_state = torch.zeros(self._num_envs, device=self._device, dtype=torch.int32)
+        self._swing_timer = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_start_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_target_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_duration = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        
+        # Initialize random timer
+        self._swing_timer[:] = torch.rand(self._num_envs, device=self._device) * 2.0  # Initial random wait
+
     def run_setup(self, robot: Articulation):
         super().run_setup(robot)
         self._thrusters_dof_idx, _ = self._robot.find_bodies(self._robot_cfg.thrusters_dof_name)
