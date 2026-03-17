@@ -30,7 +30,7 @@ class PinguRobotCfg(RobotCoreCfg):
     marker_height = 0.9
     has_reaction_wheel = True
     num_thrusters = 8
-    direct_thruster_control = False
+    direct_thruster_control = True
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     locking_joint_dof_name = ["x_lock_joint", "y_lock_joint", "base_joint"]
@@ -100,7 +100,7 @@ class PinguRobotCfg(RobotCoreCfg):
     @property
     def action_space(self) -> int:
         if self.direct_thruster_control:
-            return self.num_thrusters + 4 + (1 if self.has_reaction_wheel else 0)
+            return self.num_thrusters + (1 if self.has_reaction_wheel else 0)
         return 3 + 4 + (1 if self.has_reaction_wheel else 0)
 
     @property

@@ -249,7 +249,7 @@ class CuboRobot(RobotCore):
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
         # debug print out the full final action vector sent to the robot
-        print("Final action vector sent to the robot: ", self._actions)
+        # print("Final action vector sent to the robot: ", self._actions)
         
     def compute_physics(self):
         pass  # Model motor + ackermann steering here

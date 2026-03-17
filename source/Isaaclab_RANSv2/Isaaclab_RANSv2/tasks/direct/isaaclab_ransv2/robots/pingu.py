@@ -56,6 +56,17 @@ class PinguRobot(RobotCore):
             
         self.arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
 
+        # Initialize swing state buffers
+        # 0: Hold Right, 1: Swing to Left, 2: Hold Left, 3: Swing to Right
+        self._swing_state = torch.zeros(self._num_envs, device=self._device, dtype=torch.int32)
+        self._swing_timer = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_start_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_target_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_duration = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        
+        # Initialize random timer
+        self._swing_timer[:] = torch.rand(self._num_envs, device=self._device) * 2.0  # Initial random wait
+
     def run_setup(self, robot: Articulation):
         super().run_setup(robot)
         self._thrusters_dof_idx, _ = self._robot.find_bodies(self._robot_cfg.thrusters_dof_name)
@@ -125,6 +136,13 @@ class PinguRobot(RobotCore):
     ):
         super().reset(env_ids, gen_actions, env_seeds)
         self._previous_actions[env_ids] = 0
+        
+        # Reset swing state
+        self._swing_state[env_ids] = 0
+        self._swing_timer[env_ids] = torch.rand(len(env_ids), device=self._device) * 2.0 # Random wait up to 2s
+        self._swing_start_angle[env_ids] = -0.8
+        self._swing_target_angle[env_ids] = -0.8
+        self._swing_duration[env_ids] = 1.0
 
     def set_initial_conditions(self, env_ids: torch.Tensor):
         # thrust_reset = torch.zeros_like(self._thrust_action)
@@ -205,23 +223,104 @@ class PinguRobot(RobotCore):
         """ Incremental position control (actions are changes to joint position targets)
         """
         self._robot_cfg.arms_action_scalar = 1.0
+        
+        # --- Random Swing Logic ---
+        dt = self.scene.physics_dt
+        self._swing_timer -= dt
+        arms_movement = torch.zeros((self._num_envs, 4), device=self._device) # left shoulder, left elbow, right shoulder, right elbow
+        
+        # Indices of environments that need a state transition
+        reset_indices = (self._swing_timer <= 0).nonzero(as_tuple=True)[0]
+        
+        if len(reset_indices) > 0:
+            # Advance state: 0->1->2->3->0...
+            self._swing_state[reset_indices] = (self._swing_state[reset_indices] + 1) % 4
+            
+            # Create masks for each new state
+            s0 = (self._swing_state[reset_indices] == 0) # Hold Right
+            s1 = (self._swing_state[reset_indices] == 1) # Swing to Left
+            s2 = (self._swing_state[reset_indices] == 2) # Hold Left
+            s3 = (self._swing_state[reset_indices] == 3) # Swing to Right
+            
+            # --- State 0: Hold Right (-0.8) ---
+            if s0.any():
+                idx = reset_indices[s0]
+                self._swing_target_angle[idx] = -0.8
+                # Random pause duration: 0.1s to 0.3s
+                self._swing_timer[idx] = 0.1 + torch.rand(len(idx), device=self._device) * 0.2
+            
+            # --- State 1: Swing to Left (-0.8 -> +0.8) ---
+            if s1.any():
+                idx = reset_indices[s1]
+                self._swing_start_angle[idx] = -0.8
+                self._swing_target_angle[idx] = 0.8
+                # Swing duration: 0.1s to 0.3s
+                duration = 0.1 + torch.rand(len(idx), device=self._device) * 0.2
+                self._swing_duration[idx] = duration
+                self._swing_timer[idx] = duration
+            
+            # --- State 2: Hold Left (+0.8) ---
+            if s2.any():
+                idx = reset_indices[s2]
+                self._swing_target_angle[idx] = 0.8
+                # Random pause duration: 0.1s to 0.3s
+                self._swing_timer[idx] = 0.1 + torch.rand(len(idx), device=self._device) * 0.2
+            
+            # --- State 3: Swing to Right (+0.8 -> -0.8) ---
+            if s3.any():
+                idx = reset_indices[s3]
+                self._swing_start_angle[idx] = 0.8
+                self._swing_target_angle[idx] = -0.8
+                # Swing duration: 0.1s to 0.3s
+                duration = 0.1 + torch.rand(len(idx), device=self._device) * 0.2
+                self._swing_duration[idx] = duration
+                self._swing_timer[idx] = duration
+
+        # Compute current target angle for all envs
+        # Default to target (handles Hold states)
+        target_pos = self._swing_target_angle.clone()
+        
+        # Compute interpolation for Swing states (1 and 3)
+        swinging = (self._swing_state == 1) | (self._swing_state == 3)
+        if swinging.any():
+            idx = swinging.nonzero(as_tuple=True)[0]
+            # progress goes from 0.0 to 1.0
+            progress = 1.0 - (self._swing_timer[idx] / self._swing_duration[idx])
+            progress = torch.clamp(progress, 0.0, 1.0)
+            # Cosine interpolation
+            alpha = (1.0 - torch.cos(progress * torch.pi)) * 0.5
+            target_pos[idx] = self._swing_start_angle[idx] + (self._swing_target_angle[idx] - self._swing_start_angle[idx]) * alpha
+
+        # Calculate actions to reach target position (action = (target - current) / scalar)
+        s_idx_l = self._left_levionarm_dof_idx[0]
+        arms_movement[:, 0] = (target_pos - self._robot.data.joint_pos[:, s_idx_l]) / self._robot_cfg.arms_action_scalar
+        
+        s_idx_r = self._right_levionarm_dof_idx[0] 
+        arms_movement[:, 2] = (target_pos - self._robot.data.joint_pos[:, s_idx_r]) / self._robot_cfg.arms_action_scalar
+        
+        # Zero out elbows (drive to 0 position)
+        e_idx_l = self._left_levionarm_dof_idx[1]
+        e_idx_r = self._right_levionarm_dof_idx[1]
+        arms_movement[:, 1] = (0.0 - self._robot.data.joint_pos[:, e_idx_l]) / self._robot_cfg.arms_action_scalar
+        arms_movement[:, 3] = (0.0 - self._robot.data.joint_pos[:, e_idx_r]) / self._robot_cfg.arms_action_scalar
+        
         # Left shoulder
-        left_shoulder_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[0]] + actions[:, thrust_dim + 0] * self._robot_cfg.arms_action_scalar
+        left_shoulder_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[0]] + arms_movement[:, 0] * self._robot_cfg.arms_action_scalar
         self.arm_position_targets[:, 0] = torch.clamp(
             left_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
         )
         # Left elbow
-        left_elbow_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[1]] + actions[:, thrust_dim + 1] * self._robot_cfg.arms_action_scalar
+        left_elbow_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[1]] + arms_movement[:, 1] * self._robot_cfg.arms_action_scalar
         self.arm_position_targets[:, 1] = torch.clamp(
             left_elbow_displacement, self._left_elbow_lower_limit, self._left_elbow_upper_limit
         )
         # Right shoulder
-        right_shoulder_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[0]] + actions[:, thrust_dim + 2] * self._robot_cfg.arms_action_scalar
+        right_shoulder_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[0]] + arms_movement[:, 2] * self._robot_cfg.arms_action_scalar
         self.arm_position_targets[:, 2] = torch.clamp(
             right_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
         )
         # Right elbow
-        right_elbow_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[1]] + actions[:, thrust_dim + 3] * self._robot_cfg.arms_action_scalar
+        right_elbow_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[1]] + arms_movement[:, 3] * self._robot_cfg.arms_action_scalar
         self.arm_position_targets[:, 3] = torch.clamp(
             right_elbow_displacement, self._right_elbow_lower_limit, self._right_elbow_upper_limit
         )
@@ -240,7 +339,7 @@ class PinguRobot(RobotCore):
         if self._robot_cfg.has_reaction_wheel:
             # Reaction wheel: last action (index thrust_dim+4 or -1)
             self._reaction_wheel_action = (
-                actions[:, thrust_dim + 4] * self._robot_cfg.reaction_wheel_scale
+                actions[:, -1] * self._robot_cfg.reaction_wheel_scale
             ).unsqueeze(-1)
 
         # Log data for monitoring
@@ -249,7 +348,7 @@ class PinguRobot(RobotCore):
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
         # debug print out the full final action vector sent to the robot
-        print("Final action vector sent to the robot: ", self._actions)
+        # print("Final action vector sent to the robot: ", self._actions)
 
     def compute_physics(self):
         pass
