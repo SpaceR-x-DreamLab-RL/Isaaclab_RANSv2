@@ -17,9 +17,9 @@ class GoToPoseCfg(TaskCoreCfg):
     """Configuration for the GoToPose task."""
 
     # Initial conditions
-    spawn_min_dist: float = 0.5
+    spawn_min_dist: float = 0.0
     """Minimal distance between the spawn pose and the target pose in m. Defaults to 0.5 m."""
-    spawn_max_dist: float = 5.0
+    spawn_max_dist: float = 0.001
     """Maximal distance between the spawn pose and the target pose in m. Defaults to 5.0 m."""
     spawn_min_cone_spread: float = 0.0
     """When generating an initial position, the robot is spawned in a cone behind (+pi) the target's orientation.

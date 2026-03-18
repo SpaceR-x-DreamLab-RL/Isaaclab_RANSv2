@@ -200,36 +200,27 @@ class PinguRobot(RobotCore):
         """
         self._robot_cfg.arms_action_scalar = 1.0
         
-        # # Left shoulder
-        # left_shoulder_displacement = self._robot.data.joint_pos[self._env_ids, self._left_levionarm_dof_idx[0]] + actions[:, 0] * self._robot_cfg.arms_action_scalar
-        # self.arm_position_targets[:, 0] = torch.clamp(
-        #     left_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
-        # )
-        # # Left elbow
-        # left_elbow_displacement = self._robot.data.joint_pos[self._env_ids, self._left_levionarm_dof_idx[1]] + actions[:, 1] * self._robot_cfg.arms_action_scalar
-        # self.arm_position_targets[:, 1] = torch.clamp(
-        #     left_elbow_displacement, self._left_elbow_lower_limit, self._left_elbow_upper_limit
-        # )
-        # # Right shoulder
-        # right_shoulder_displacement = self._robot.data.joint_pos[self._env_ids, self._right_levionarm_dof_idx[0]] + actions[:, 2] * self._robot_cfg.arms_action_scalar
-        # self.arm_position_targets[:, 2] = torch.clamp(
-        #     right_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
-        # )
-        # # Right elbow
-        # right_elbow_displacement = self._robot.data.joint_pos[self._env_ids, self._right_levionarm_dof_idx[1]] + actions[:, 3] * self._robot_cfg.arms_action_scalar
-        # self.arm_position_targets[:, 3] = torch.clamp(
-        #     right_elbow_displacement, self._right_elbow_lower_limit, self._right_elbow_upper_limit
-        # )
+        # Left shoulder
+        left_shoulder_displacement = self._robot.data.joint_pos[self._env_ids, self._left_levionarm_dof_idx[0]] + actions[:, 0] * self._robot_cfg.arms_action_scalar
+        self.arm_position_targets[:, 0] = torch.clamp(
+            left_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
+        )
+        # Left elbow
+        left_elbow_displacement = self._robot.data.joint_pos[self._env_ids, self._left_levionarm_dof_idx[1]] + actions[:, 1] * self._robot_cfg.arms_action_scalar
+        self.arm_position_targets[:, 1] = torch.clamp(
+            left_elbow_displacement, self._left_elbow_lower_limit, self._left_elbow_upper_limit
+        )
+        # Right shoulder
+        right_shoulder_displacement = self._robot.data.joint_pos[self._env_ids, self._right_levionarm_dof_idx[0]] + actions[:, 2] * self._robot_cfg.arms_action_scalar
+        self.arm_position_targets[:, 2] = torch.clamp(
+            right_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
+        )
+        # Right elbow
+        right_elbow_displacement = self._robot.data.joint_pos[self._env_ids, self._right_levionarm_dof_idx[1]] + actions[:, 3] * self._robot_cfg.arms_action_scalar
+        self.arm_position_targets[:, 3] = torch.clamp(
+            right_elbow_displacement, self._right_elbow_lower_limit, self._right_elbow_upper_limit
+        )
         
-        if self._robot_cfg.has_reaction_wheel:
-            # Reaction wheel: last action (index thrust_dim+4 or -1)
-            self._reaction_wheel_action = (
-                actions[:, -1] * self._robot_cfg.reaction_wheel_scale
-            ).unsqueeze(-1)
-
-        # Log data for monitoring
-        if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
     def compute_physics(self):
         pass

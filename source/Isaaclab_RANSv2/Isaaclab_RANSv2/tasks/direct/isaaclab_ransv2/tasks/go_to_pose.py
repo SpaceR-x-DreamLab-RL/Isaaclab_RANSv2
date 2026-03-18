@@ -259,10 +259,10 @@ class GoToPoseTask(TaskCore):
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
-            (position_rew) * (heading_rew) * self._task_cfg.pose_weight
-            + linear_velocity_rew * self._task_cfg.linear_velocity_weight
-            + angular_velocity_rew * self._task_cfg.angular_velocity_weight
-            + boundary_rew * self._task_cfg.boundary_weight
+            (heading_rew) * self._task_cfg.pose_weight
+            # + linear_velocity_rew * self._task_cfg.linear_velocity_weight
+            # + angular_velocity_rew * self._task_cfg.angular_velocity_weight
+            # + boundary_rew * self._task_cfg.boundary_weight
         ) + self._robot.compute_rewards()
 
     def reset(
@@ -453,7 +453,7 @@ class GoToPoseTask(TaskCore):
 
     def update_task_visualization(self) -> None:
         """Updates the visual marker to the scene."""
-
+        self._markers_pos[:, :2] = self._robot.root_link_pos_w[:, :2]
         self.goal_pos_visualizer.visualize(self._markers_pos, self._markers_quat)
         self._robot_marker_pos[:, :2] = self._robot.root_link_pos_w[:, :2]
         self.robot_pos_visualizer.visualize(self._robot_marker_pos, self._robot.root_link_quat_w)
