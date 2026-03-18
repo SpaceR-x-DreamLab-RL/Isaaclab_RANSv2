@@ -91,9 +91,9 @@ class TrackVelocitiesTask(TaskCore):
             "lateral_velocity_target": self._lateral_velocity_target,
             "angular_velocity_target": self._angular_velocity_target,
             "goal_reached": self._goal_reached,
-            "error_linear_velocity": self._task_data[:, 0],
-            "error_lateral_velocity": self._task_data[:, 1],
-            "error_angular_velocity": self._task_data[:, 2],
+            # "error_linear_velocity": self._task_data[:, 0],
+            # "error_lateral_velocity": self._task_data[:, 1],
+            "error_angular_velocity": self._task_data[:, 0],
         }
 
 
@@ -173,18 +173,18 @@ class TrackVelocitiesTask(TaskCore):
 
         # Store in buffer
         self._task_data[:, 0] = err_lin_vel * self._task_cfg.enable_linear_velocity
-        self._task_data[:, 1] = err_lat_vel * self._task_cfg.enable_lateral_velocity
-        self._task_data[:, 2] = err_ang_vel * self._task_cfg.enable_angular_velocity
-        self._task_data[:, 3:5] = self._robot.root_com_lin_vel_b[self._env_ids, :2]
-        self._task_data[:, 5] = self._robot.root_com_ang_vel_w[self._env_ids, -1]
+        # self._task_data[:, 1] = err_lat_vel * self._task_cfg.enable_lateral_velocity
+        # self._task_data[:, 2] = err_ang_vel * self._task_cfg.enable_angular_velocity
+        # self._task_data[:, 3:5] = self._robot.root_com_lin_vel_b[self._env_ids, :2]
+        self._task_data[:, 1] = self._robot.root_com_ang_vel_w[self._env_ids, -1]
 
         # Update logs
-        self.scalar_logger.log(
-            "task_state", "AVG/absolute_linear_velocity", torch.abs(self._robot.root_com_lin_vel_b[:, 0])
-        )
-        self.scalar_logger.log(
-            "task_state", "AVG/absolute_lateral_velocity", torch.abs(self._robot.root_com_lin_vel_b[:, 1])
-        )
+        # self.scalar_logger.log(
+        #     "task_state", "AVG/absolute_linear_velocity", torch.abs(self._robot.root_com_lin_vel_b[:, 0])
+        # )
+        # self.scalar_logger.log(
+        #     "task_state", "AVG/absolute_lateral_velocity", torch.abs(self._robot.root_com_lin_vel_b[:, 1])
+        # )
         self.scalar_logger.log(
             "task_state", "AVG/absolute_angular_velocity", torch.abs(self._robot.root_com_ang_vel_w[:, 2])
         )
@@ -251,8 +251,8 @@ class TrackVelocitiesTask(TaskCore):
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
-            linear_velocity_rew * self._task_cfg.linear_velocity_weight
-            + lateral_velocity_rew * self._task_cfg.lateral_velocity_weight
+            # linear_velocity_rew * self._task_cfg.linear_velocity_weight
+            # + lateral_velocity_rew * self._task_cfg.lateral_velocity_weight
             + angular_velocity_rew * self._task_cfg.angular_velocity_weight
         ) + self._robot.compute_rewards()
 
