@@ -19,29 +19,29 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Minimal linear velocity at spawn pose in m/s. Defaults to 0.0 m/s."""
     spawn_max_lin_vel: float = 0.0
     """Maximal linear velocity at spawn pose in m/s. Defaults to 0.0 m/s."""
-    spawn_min_ang_vel: float = 0.0
-    """Minimal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
-    spawn_max_ang_vel: float = 0.0
-    """Maximal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
+    spawn_min_ang_vel: float = 0.4
+    """Minimal angular velocity at spawn in rad/s. Defaults to 0.4 rad/s."""
+    spawn_max_ang_vel: float = 3.14
+    """Maximal angular velocity at spawn in rad/s. Defaults to 3.14 rad/s."""
 
     # Goal spawn
-    enable_linear_velocity: bool = True
+    enable_linear_velocity: bool = False
     """Enable linear velocity goal. Defaults to True."""
     goal_min_lin_vel: float = 0.0
     """Minimal linear velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
-    goal_max_lin_vel: float = 0.45
+    goal_max_lin_vel: float = 0.001
     """Maximal linear velocity goal in m/s. Defaults to 2.0 m/s. (a random sign is added)"""
-    enable_lateral_velocity: bool = True
+    enable_lateral_velocity: bool = False
     """Enable lateral velocity goal. Defaults to False."""
     goal_min_lat_vel: float = 0.0
     """Minimal lateral velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
-    goal_max_lat_vel: float = 0.45
+    goal_max_lat_vel: float = 0.001
     """Maximal lateral velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
     enable_angular_velocity: bool = True
     """Enable angular velocity goal. Defaults to True."""
     goal_min_ang_vel: float = 0.0
     """Minimal angular velocity goal in rad/s. Defaults to 0.0 rad/s. (a random sign is added)"""
-    goal_max_ang_vel: float = 0.9
+    goal_max_ang_vel: float = 0.0001
     """Maximal angular velocity goal in rad/s. Defaults to 0.4 rad/s. (a random sign is added)"""
 
     # Settings
@@ -60,9 +60,9 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     lin_vel_exponential_reward_coeff: float = 0.5
     lat_vel_exponential_reward_coeff: float = 0.5
     ang_vel_exponential_reward_coeff: float = 0.5
-    linear_velocity_weight: float = 0.5
+    linear_velocity_weight: float = 0.0
     lateral_velocity_weight: float = 0.0
-    angular_velocity_weight: float = 0.5
+    angular_velocity_weight: float = 1.0
 
     # Visualization
     visualization_linear_velocity_scale: float = 1.0

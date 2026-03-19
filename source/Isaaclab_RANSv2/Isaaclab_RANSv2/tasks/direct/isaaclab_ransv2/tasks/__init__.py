@@ -26,6 +26,7 @@ from .race_wayposes import RaceWayposesTask  # noqa: F401, F403
 from .task_core import TaskCore  # noqa: F401, F403
 from .track_velocities import TrackVelocitiesTask  # noqa: F401, F403
 from .track_velocities_6DoF import TrackVelocities3DTask  # noqa: F401, F403
+from .momentum_management import MomentumManagementTask  # noqa: F401, F403
 
 TASK_FACTORY = factory()
 TASK_FACTORY.register("GoThroughPoses", GoThroughPosesTask)

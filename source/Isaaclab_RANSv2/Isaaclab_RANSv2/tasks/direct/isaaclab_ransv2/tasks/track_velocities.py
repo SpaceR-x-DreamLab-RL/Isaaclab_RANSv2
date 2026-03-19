@@ -251,8 +251,8 @@ class TrackVelocitiesTask(TaskCore):
 
         # Return the reward by combining the different components and adding the robot rewards
         return (
-            linear_velocity_rew * self._task_cfg.linear_velocity_weight
-            + lateral_velocity_rew * self._task_cfg.lateral_velocity_weight
+            # linear_velocity_rew * self._task_cfg.linear_velocity_weight
+            # + lateral_velocity_rew * self._task_cfg.lateral_velocity_weight
             + angular_velocity_rew * self._task_cfg.angular_velocity_weight
         ) + self._robot.compute_rewards()
 

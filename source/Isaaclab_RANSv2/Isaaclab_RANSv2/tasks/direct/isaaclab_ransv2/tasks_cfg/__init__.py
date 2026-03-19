@@ -24,6 +24,7 @@ from .race_waypoints_cfg import RaceWaypointsCfg  # noqa: F401, F403
 from .race_wayposes_cfg import RaceWayposesCfg  # noqa: F401, F403
 from .track_velocities_6DoF_cfg import TrackVelocities3DCfg  # noqa: F401, F403
 from .track_velocities_cfg import TrackVelocitiesCfg  # noqa: F401, F403
+from .momentum_management_cfg import MomentumManagementCfg  # noqa: F401, F403
 
 TASK_CFG_FACTORY = factory()
 TASK_CFG_FACTORY.register("GoThroughPoses", GoThroughPosesCfg)
@@ -40,3 +41,4 @@ TASK_CFG_FACTORY.register("TrackVelocities", TrackVelocitiesCfg)
 TASK_CFG_FACTORY.register("TrackVelocities3D", TrackVelocities3DCfg)
 TASK_CFG_FACTORY.register("GoToPositionWithObstacles", GoToPositionWithObstaclesCfg)
 TASK_CFG_FACTORY.register("RaceGates", RaceGatesCfg)
+TASK_CFG_FACTORY.register("MomentumManagement", MomentumManagementCfg)

@@ -91,6 +91,11 @@ class PinguRobot(RobotCore):
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/joint_acceleration", "mean")
+        
+        self.scalar_logger.add_log("robot_reward", "momentum/ang_vel", "mean")
+        self.scalar_logger.add_log("robot_reward", "momentum/thrust", "mean")
+        self.scalar_logger.add_log("robot_reward", "momentum/rw_vel", "mean")
+        self.scalar_logger.add_log("robot_reward", "momentum/arms_ext", "mean")
 
     def get_observations(self) -> torch.Tensor:
         return self._unaltered_actions
@@ -98,19 +103,50 @@ class PinguRobot(RobotCore):
     def compute_rewards(self):
         # TODO: DT should be factored in?
 
-        joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
+        # joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
 
-        # Log data
-        self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
+        # # Log data
+        # self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
+        # self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
 
-        reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
-        if self._robot_cfg.direct_thruster_control:
-            action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
-            self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
-            self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
-            reward = reward + action_rate * self._robot_cfg.rew_action_rate_scale
-        return reward
+        # reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
+        # if self._robot_cfg.direct_thruster_control:
+        #     action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
+        #     self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
+        #     self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
+        #     reward = reward + action_rate * self._robot_cfg.rew_action_rate_scale
+        # return torch.zeros_like(reward)  # reward
+
+        # Momentum Management Rewards
+        
+        # 1. Base Angular Velocity (Minimize) -> Goal: Stop spinning
+        current_ang_vel = torch.abs(self.root_ang_vel_w[:, 2])
+        rew_ang_vel = torch.exp(-current_ang_vel / 1.0) * 2.0 
+
+        # 2. Thruster Usage (Penalty) -> Encourage using RW (desaturation of RW handles the rest)
+        thrust_mag = torch.sum(self._thrust_action[:, :, 2], dim=1) 
+        rew_thrust = thrust_mag * -0.5 
+
+        # 3. Reaction Wheel Velocity (Penalty) -> Encourage Desaturation
+        if self._robot_cfg.has_reaction_wheel:
+            rw_vel = torch.abs(self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx]).squeeze()
+            rew_rw = rw_vel * -0.05
+        else:
+            rew_rw = 0.0
+
+        # 4. Arm Extension Bonus (When spinning fast) -> Passive Braking
+        arm_pos = torch.sum(torch.abs(self._robot.data.joint_pos[:, self._arms_ids]), dim=1)
+        rew_arms = arm_pos * current_ang_vel * 0.5
+
+        total_reward =  rew_thrust + rew_rw + rew_arms # + rew_ang_vel
+
+        # Log terms
+        self.scalar_logger.log("robot_reward", "momentum/ang_vel", rew_ang_vel)
+        self.scalar_logger.log("robot_reward", "momentum/thrust", rew_thrust)
+        self.scalar_logger.log("robot_reward", "momentum/rw_vel", rew_rw)
+        self.scalar_logger.log("robot_reward", "momentum/arms_ext", rew_arms)
+        
+        return total_reward
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         task_failed = torch.zeros(self._num_envs, dtype=torch.int32, device=self._device)
@@ -249,7 +285,7 @@ class PinguRobot(RobotCore):
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
 
         # debug print out the full final action vector sent to the robot
-        print("Final action vector sent to the robot: ", self._actions)
+        # print("Final action vector sent to the robot: ", self._actions)
 
     def compute_physics(self):
         pass

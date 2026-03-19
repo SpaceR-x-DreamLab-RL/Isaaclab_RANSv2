@@ -30,7 +30,7 @@ class PinguRobotCfg(RobotCoreCfg):
     marker_height = 0.9
     has_reaction_wheel = True
     num_thrusters = 8
-    direct_thruster_control = False
+    direct_thruster_control = True
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     locking_joint_dof_name = ["x_lock_joint", "y_lock_joint", "base_joint"]
