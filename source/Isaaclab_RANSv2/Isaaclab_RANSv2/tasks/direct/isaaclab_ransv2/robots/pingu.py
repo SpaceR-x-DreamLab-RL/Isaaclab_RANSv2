@@ -41,6 +41,54 @@ class PinguRobot(RobotCore):
 
         # Buffers
         self.initialize_buffers()
+        
+    @property
+    def eval_data_keys(self) -> list[str]:
+        return [
+            "position",
+            "heading",
+            "linear_velocity",
+            "angular_velocity",
+            "reaction_wheel_action",
+            "actions",
+            "unaltered_actions",
+            "left_arm_position",
+            "right_arm_position",
+            "left_arm_velocity",
+            "right_arm_velocity",
+        ]
+    
+    @property
+    def eval_data_specs(self)->dict[str, list[str]]:
+        return {
+            "position": [".robot_pos.x.m", ".robot_pos.y.m", ".robot_pos.z.m"],
+            "heading": [".robot_heading.rad"],
+            "linear_velocity": [".robot_lin_vel.x.m/s", ".robot_lin_vel.y.m/s", ".robot_lin_vel.z.m/s"],
+            "angular_velocity": [".robot_ang_vel.x.rad/s", ".robot_ang_vel.y.rad/s", ".robot_ang_vel.z.rad/s"],
+            "reaction_wheel_action": [".reaction_wheel_action.u"],
+            "actions": [f".robot_actions{i}.u" for i in range(self._robot_cfg.action_space)],
+            "unaltered_actions": [f".robot_unaltered_actions{i}.u" for i in range(self._robot_cfg.action_space)],
+            "left_arm_position": [".left_shoulder.pos.rad", ".left_elbow.pos.rad"],
+            "right_arm_position": [".right_shoulder.pos.rad", ".right_elbow.pos.rad"],
+            "left_arm_velocity": [".left_shoulder.vel.rad/s", ".left_elbow.vel.rad/s"],
+            "right_arm_velocity": [".right_shoulder.vel.rad/s", ".right_elbow.vel.rad/s"],
+        }
+    
+    @property
+    def eval_data(self) -> dict:
+        return {
+            "position": self.root_pos_w,
+            "heading": self.heading_w,
+            "linear_velocity": self.root_lin_vel_b,
+            "angular_velocity": self.root_ang_vel_b,
+            "reaction_wheel_action": self._reaction_wheel_action,
+            "actions": self._actions,
+            "unaltered_actions": self._unaltered_actions,
+            "left_arm_position": self._robot.data.joint_pos[:, self._left_levionarm_dof_idx],
+            "right_arm_position": self._robot.data.joint_pos[:, self._right_levionarm_dof_idx],
+            "left_arm_velocity": self._robot.data.joint_vel[:, self._left_levionarm_dof_idx],
+            "right_arm_velocity": self._robot.data.joint_vel[:, self._right_levionarm_dof_idx],
+        }
 
     def initialize_buffers(self, env_ids=None):
         super().initialize_buffers(env_ids)

@@ -42,12 +42,12 @@ parser.add_argument(
     action="store_true", 
     default=True, help="Overload experiment config. If set to True, it will load the cfg of the model that was used for training."
 )
-parser.add_argument(
-    "--algorithm",
-    type=str,
-    default="PPO",
-    help="The RL algorithm used for training the rsl-rl agent.",
-)
+# parser.add_argument(
+#     "--algorithm",
+#     type=str,
+#     default="PPO",
+#     help="The RL algorithm used for training the rsl-rl agent.",
+# )
 parser.add_argument("--skip_first_reset", action="store_true", default=False, help="Skip the first reset when collecting evaluation data.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -100,8 +100,8 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 from isaaclab_tasks.rans.utils import EvalMetrics
 
 # config shortcuts
-algorithm = args_cli.algorithm.lower()
-agent_cfg_entry_point = "rsl_rl_cfg_entry_point" if algorithm in ["ppo"] else f"rsl_rl_{algorithm}_cfg_entry_point"
+# algorithm = args_cli.algorithm.lower()
+# agent_cfg_entry_point = "rsl_rl_cfg_entry_point" if algorithm in ["ppo"] else f"rsl_rl_{algorithm}_cfg_entry_point"
 
 
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)

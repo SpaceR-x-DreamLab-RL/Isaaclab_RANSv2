@@ -11,8 +11,8 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 2000
-    save_interval = 100
+    max_iterations = 500
+    save_interval = 500
     experiment_name = "AutoEnvGen_PPO"
     logger = "wandb"
     wandb_project = "AutoEnvGen_PPO"

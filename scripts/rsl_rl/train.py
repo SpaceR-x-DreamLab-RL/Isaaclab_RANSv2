@@ -149,7 +149,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.experiment_name is None and not (getattr(agent_cfg, "experiment_name", None) or "").strip():
         agent_cfg.experiment_name = env_name
     if args_cli.run_name is None:
-        agent_cfg.run_name = f"{algorithm}_{robot_name}_{task_name}_rsl_rl"
+        agent_cfg.run_name = f"{algorithm}_{robot_name}_{task_name}_rsl_rl_seed_{agent_cfg.seed}"
         if agent_cfg.logger in {"wandb", "neptune"}:
             full_wandb_run_name = get_wandb_run_name(
                 date_time_str, algorithm, robot_name, task_name, "rsl_rl"

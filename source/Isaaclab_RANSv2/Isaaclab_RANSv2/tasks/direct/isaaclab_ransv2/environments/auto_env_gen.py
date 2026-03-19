@@ -62,6 +62,18 @@ class AutoEnvGen(DirectRLEnv):
         self.task_api.run_setup(self.robot_api, self.scene.env_origins)
         self.set_debug_vis(self.cfg.debug_vis)
         self.task_api.register_rigid_objects()
+        
+    @property
+    def eval_data_keys(self) -> list[str]:
+        task_data_keys = self.task_api.eval_data_keys
+        robot_data_keys = self.robot_api.eval_data_keys
+        return task_data_keys + robot_data_keys
+    
+    @property
+    def eval_data(self) -> dict:
+        task_eval_data = self.task_api.eval_data
+        robot_eval_data = self.robot_api.eval_data
+        return {**task_eval_data, **robot_eval_data}
 
     def _configure_gym_env_spaces(self):
         """Configure the action and observation spaces for the Gym environment."""
