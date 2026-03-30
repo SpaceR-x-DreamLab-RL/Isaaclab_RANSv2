@@ -1,8 +1,8 @@
 # Template for Isaac Lab Projects
 
 ```
-./Isaaclab_RANSv2/.docker/build.bash
-./Isaaclab_RANSv2/.docker/run.bash
+docker/container.py start
+docker/container.py enter
 python scripts/teleop_rans_robots/teleop.py --task=Isaaclab-RANSv2-AutoEnvGen-v0 --num_envs=2
 python scripts/rsl_rl/train.py --task=Isaaclab-RANSv2-AutoEnvGen-v0 env.robot_name=Cubo env.task_name=GoToPosition --headless
 ```
