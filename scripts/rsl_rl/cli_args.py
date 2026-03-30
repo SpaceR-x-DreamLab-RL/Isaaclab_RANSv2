@@ -43,6 +43,21 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
         default=None,
         help="Algorithm name for run naming (e.g. ppo, ppo-discrete). Default derived from agent config.",
     )
+    
+def load_rsl_rl_cfg(checkpoint_path: str, task_name:str) -> RslRlOnPolicyRunnerCfg:
+    """Load configuration for RSL-RL agent from checkpoint.
+
+    Args:
+        checkpoint_path: The path to the checkpoint file.
+
+    Returns:
+        The loaded configuration for RSL-RL agent.
+    """
+    from isaaclab_tasks.utils.parse_cfg import load_cfg_from_checkpoint
+
+    # load the configuration from checkpoint
+    rslrl_cfg: RslRlOnPolicyRunnerCfg = load_cfg_from_checkpoint(checkpoint_path, task_name, "rsl_rl_cfg_entry_point")
+    return rslrl_cfg
 
 
 def parse_rsl_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> RslRlBaseRunnerCfg:

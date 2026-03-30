@@ -3,7 +3,7 @@
 
 # Common evaluation parameters
 SCRIPT_PATH="scripts/rsl_rl/eval.py"
-TASK="Isaac-RANS-Single-v0"
+TASK="Isaaclab-RANSv2-AutoEnvGen-v0"
 NUM_ENVS=128
 runs_per_env=4
 BASE_LOG_DIR="logs/rsl_rl/AutoEnvGen_PPO"
@@ -12,17 +12,26 @@ task_name="GoToPose"
 PYTHON_EXE="${ISAACSIM_ROOT_PATH}/python.sh"
 
 # Common arguments that apply to all evaluations
-COMMON_ARGS="--task=${TASK} --headless --num_envs=${NUM_ENVS} --runs_per_env=${runs_per_env} env.robot_name=${robot} env.task_name=${task_name}"
+COMMON_ARGS="--task=${TASK} --headless --num_envs=${NUM_ENVS} --runs-per-env=${runs_per_env} env.robot_name=${robot} env.task_name=${task_name}"
 
 # Array of checkpoint paths (relative to BASE_LOG_DIR)
 
-#Experts
+#PPO
+# CHECKPOINTS=(
+#     2026-03-19_15-50-06_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
+#     2026-03-19_16-00-50_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
+#     2026-03-19_15-55-30_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
+#     2026-03-19_16-06-11_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
+#     2026-03-19_16-11-27_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
+# )
+
+#PPO + DR
 CHECKPOINTS=(
-    2026-03-19_15-50-06_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
-    2026-03-19_16-00-50_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
-    2026-03-19_15-55-30_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
-    2026-03-19_16-06-11_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
-    2026-03-19_16-11-27_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
+    2026-03-30_08-35-14_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
+    2026-03-30_08-46-00_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
+    2026-03-30_08-57-02_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
+    2026-03-30_09-07-50_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
+    2026-03-30_09-18-44_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
 )
 
 

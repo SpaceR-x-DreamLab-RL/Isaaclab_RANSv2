@@ -80,11 +80,14 @@ class EvalMetrics:
         
         trajectories = {k: v.transpose(0,1) for k, v in self.data.items()}
         for i in range(cutoff_indices.shape[0]):
+            max_cutoff = int(torch.max(cutoff_indices[i]).item())
             for k, v in trajectories.items():
-                v[i][cutoff_indices[i]:] = 0
+                v[i][max_cutoff + 1:] = 0
         
-        trajectories_masks = torch.zeros(cutoff_indices.shape[0], torch.max(cutoff_indices), dtype=torch.bool, device=self.device)
-        trajectories_mask = torch.arange(trajectories_masks.shape[-1], device=self.device) <= cutoff_indices
+        trajectories_masks = torch.zeros(cutoff_indices.shape[0], int(torch.max(cutoff_indices).item()), dtype=torch.bool, device=self.device)
+        # Use the last (max) cutoff index per environment to determine valid steps
+        max_cutoff_indices = torch.max(cutoff_indices, dim=1).values
+        trajectories_mask = torch.arange(trajectories_masks.shape[-1], device=self.device).unsqueeze(0) <= max_cutoff_indices.unsqueeze(1)
         
         # Store these as instance variables so the saver can access them
         self.extracted_trajectories = trajectories 
@@ -128,7 +131,7 @@ class EvalMetrics:
 
     def save_extracted_trajectories_to_csv(self, max_workers=32):
         """
-        Saves the first 32 extracted trajectories to a CSV. 
+        Saves all extracted trajectories to a CSV. 
         Uses cutoff_indices to slice away padded zeros.
         """
         save_path = os.path.join(self.save_path, "metrics", f"detailed_trajectories_{self.task_name}.csv")
@@ -141,8 +144,8 @@ class EvalMetrics:
         keys = list(self.extracted_trajectories.keys())
         dim_names = ['x', 'y', 'z']
         
-        # Limit to first 32 environments/trajectories
-        num_trajectories = min(32, self.last_true_index.shape[0])
+        # Save all environments/trajectories
+        num_trajectories = self.last_true_index.shape[0]
 
         def _process_one(traj_idx):
             # Determine actual length for this trajectory to avoid saving zeros
