@@ -32,7 +32,7 @@ parser.add_argument(
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 parser.add_argument(
-    "--runs_per_env",
+    "--runs-per-env",
     type=int,
     default=1,
     help="The number of runs to be performed for each environment.",
@@ -96,12 +96,12 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-
-from isaaclab_tasks.rans.utils import EvalMetrics
+import Isaaclab_RANSv2.tasks  # noqa: F401
+from Isaaclab_RANSv2.tasks.direct.isaaclab_ransv2.utils import EvalMetrics
 
 # config shortcuts
-# algorithm = args_cli.algorithm.lower()
-# agent_cfg_entry_point = "rsl_rl_cfg_entry_point" if algorithm in ["ppo"] else f"rsl_rl_{algorithm}_cfg_entry_point"
+algorithm = (args_cli.algorithm or "PPO").lower()
+agent_cfg_entry_point = "rsl_rl_cfg_entry_point" if algorithm in ["ppo"] else f"rsl_rl_{algorithm}_cfg_entry_point"
 
 
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
@@ -217,6 +217,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         )
 
     print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+    print(f"[DEBUG] args_cli.runs_per_env: {args_cli.runs_per_env}")
+    runs_per_env_threshold = args_cli.runs_per_env + 1 if args_cli.skip_first_reset else args_cli.runs_per_env
+    print(f"[DEBUG] runs_per_env_threshold: {runs_per_env_threshold}")
+
     # load previously trained model
     ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     ppo_runner.load(resume_path)
@@ -260,7 +264,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 
     # reset environment
-    obs, _ = env.get_observations()
+    obs = env.get_observations()
     timestep = 0
     
     runs_per_env_threshold = args_cli.runs_per_env + 1 if args_cli.skip_first_reset else args_cli.runs_per_env
@@ -284,7 +288,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     task_completion_counts[i] += task_dones.int()
             else:
                 data["dones"].append(dones)
-                task_completion_counts += dones.int()
+                task_completion_counts += dones.unsqueeze(-1).int()
 
            
             if skip_first_reset:
