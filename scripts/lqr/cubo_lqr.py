@@ -9,12 +9,12 @@ Dynamics (planar, body frame, linearised around target pose):
 
     d/dt [ex_b, ey_b, eθ, vx_b, vy_b, ω]  =  A · e  +  B · u
 
-    A = [[0, 0, 0, 1, 0, 0],
-         [0, 0, 0, 0, 1, 0],
-         [0, 0, 0, 0, 0, 1],
-         [0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0]]
+    A = [[0, 0, 0, -1, 0,  0],
+         [0, 0, 0,  0, -1, 0],
+         [0, 0, 0,  0,  0, -1],
+         [0, 0, 0,  0,  0,  0],
+         [0, 0, 0,  0,  0,  0],
+         [0, 0, 0,  0,  0,  0]]
 
     B = [[0,       0,       0,         0      ],
          [0,       0,       0,         0      ],
@@ -131,9 +131,9 @@ def compute_lqr_gain(
     """
     # State matrix (double integrator, 3 DOF)
     A = np.zeros((6, 6))
-    A[0, 3] = 1.0   # ėx  = vx
-    A[1, 4] = 1.0   # ėy  = vy
-    A[2, 5] = 1.0   # ėθ  = ω
+    A[0, 3] = -1.0   # ėx_b = -vx_b  (target-relative: robot moving fwd reduces error)
+    A[1, 4] = -1.0   # ėy_b = -vy_b
+    A[2, 5] = -1.0   # ėθ   = -ω     (CCW rotation reduces positive heading error)
 
     # Input matrix (physical units: N and N·m)
     B = np.zeros((6, 4))
