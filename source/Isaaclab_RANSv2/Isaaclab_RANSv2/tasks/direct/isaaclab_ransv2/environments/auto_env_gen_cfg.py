@@ -10,8 +10,8 @@ class AutoEnvGenCfg(DirectRLEnvCfg):
     decimation = 6
     episode_length_s = 60.0
 
-    robot_name = "Pingu"
-    task_name = "GoToPosition"
+    robot_name = "Cubo"
+    task_name = "GoToPose"
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=7.5, replicate_physics=True)
