@@ -77,6 +77,9 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: volume
     source: isaac-lab-data
     target: ${DOCKER_ISAACLAB_PATH}/data_storage
+  - type: volume
+    source: isaac-lab-ransv2-logs
+    target: ${DOCKER_ISAACLAB_RANSV2_PATH}/logs
     # This volume is used to store the history of the bash shell
   - type: bind
     source: .isaac-lab-docker-history
@@ -164,3 +167,4 @@ volumes:
   isaac-lab-docs:
   isaac-lab-logs:
   isaac-lab-data:
+  isaac-lab-ransv2-logs:

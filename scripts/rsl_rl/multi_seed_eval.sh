@@ -26,12 +26,31 @@ COMMON_ARGS="--task=${TASK} --headless --num_envs=${NUM_ENVS} --runs-per-env=${r
 # )
 
 #PPO + DR
+# CHECKPOINTS=(
+#     2026-03-30_08-35-14_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
+#     2026-03-30_08-46-00_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
+#     2026-03-30_08-57-02_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
+#     2026-03-30_09-07-50_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
+#     2026-03-30_09-18-44_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
+# )
+
+# PPO Point-to-Pose Navigation
+# #PPO
+# CHECKPOINTS=(
+#     2026-03-30_11-34-46_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
+#     2026-03-30_11-40-43_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
+#     2026-03-30_11-46-23_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
+#     2026-03-30_11-51-46_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
+#     2026-03-30_11-57-25_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
+# )
+
+#PPO + DR
 CHECKPOINTS=(
-    2026-03-30_08-35-14_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_499.pt
-    2026-03-30_08-46-00_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_499.pt
-    2026-03-30_08-57-02_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_499.pt
-    2026-03-30_09-07-50_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_499.pt
-    2026-03-30_09-18-44_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_499.pt
+    2026-03-30_14-02-37_ppo_Pingu_GoToPose_rsl_rl_seed_1/model_999.pt
+    2026-03-30_14-24-51_ppo_Pingu_GoToPose_rsl_rl_seed_2/model_999.pt
+    2026-03-30_14-46-50_ppo_Pingu_GoToPose_rsl_rl_seed_3/model_999.pt
+    2026-03-30_15-08-58_ppo_Pingu_GoToPose_rsl_rl_seed_4/model_999.pt
+    2026-03-30_15-31-20_ppo_Pingu_GoToPose_rsl_rl_seed_5/model_999.pt
 )
 
 

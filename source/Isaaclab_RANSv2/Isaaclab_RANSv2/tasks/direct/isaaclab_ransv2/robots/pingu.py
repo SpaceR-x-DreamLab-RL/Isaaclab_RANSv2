@@ -137,7 +137,55 @@ class PinguRobot(RobotCore):
         self._right_levionarm_dof_idx, _ = self._robot.find_joints(self._robot_cfg.right_levionarm_dof_name)
         
         self._arms_ids = self._left_levionarm_dof_idx + self._right_levionarm_dof_idx
-        
+
+        # Read thruster offsets and thrust directions from the USD stage (env_0 as reference).
+        # The thruster links exist as USD prims even though PhysX merged them into base_link.
+        # We compute everything relative to base_link using quaternion math to avoid USD
+        # matrix row/column convention ambiguity.
+        import omni.usd
+        from pxr import Usd, UsdGeom
+
+        stage = omni.usd.get_context().get_stage()
+        robot_prim_path = "/World/envs/env_0/Robot"
+
+        def _usd_quat_to_tensor(prim_path: str) -> tuple[torch.Tensor, torch.Tensor]:
+            """Returns (pos, quat_wxyz) of a prim in its parent frame."""
+            prim = stage.GetPrimAtPath(prim_path)
+            if not prim.IsValid():
+                raise RuntimeError(f"USD prim not found: {prim_path}")
+            mat = UsdGeom.Xformable(prim).GetLocalTransformation(Usd.TimeCode.Default())
+            t = mat.ExtractTranslation()
+            q = mat.ExtractRotation().GetQuat()
+            pos = torch.tensor([[float(t[0]), float(t[1]), float(t[2])]], dtype=torch.float32)
+            imag = q.GetImaginary()
+            quat = torch.tensor(
+                [[float(q.GetReal()), float(imag[0]), float(imag[1]), float(imag[2])]],
+                dtype=torch.float32,
+            )
+            return pos, quat
+
+        # base_link transform in Robot-prim frame (= world frame at default config)
+        bl_pos, bl_quat = _usd_quat_to_tensor(f"{robot_prim_path}/{self._robot_cfg.root_id_name}")
+        bl_quat_inv = math_utils.quat_inv(bl_quat)
+
+        offsets, dirs = [], []
+        for link_name in self._robot_cfg.thrusters_dof_name:
+            t_pos, t_quat = _usd_quat_to_tensor(f"{robot_prim_path}/{link_name}") #x,y,z and w,x,y,z
+
+            # Position of thruster relative to base_link, expressed in base_link frame
+            diff_w = t_pos - bl_pos                                          # (1, 3) in Robot/world frame
+            offset_b = math_utils.quat_apply(bl_quat_inv, diff_w)           # (1, 3) in base_link frame
+
+            # Thrust direction: thruster's local +Z, expressed in base_link frame
+            z_world = math_utils.quat_apply(t_quat, torch.tensor([[0., 0., 1.]]))  # (1, 3) world
+            dir_b = math_utils.quat_apply(bl_quat_inv, z_world)             # (1, 3) base_link frame
+
+            offsets.append(offset_b[0].tolist())
+            dirs.append(dir_b[0].tolist())
+
+        self._thruster_offsets_b = torch.tensor(offsets, device=self._device, dtype=torch.float32)
+        self._thruster_dirs_b = torch.tensor(dirs, device=self._device, dtype=torch.float32)
+
         self._shoulder_lower_limit = self._robot.data.soft_joint_pos_limits[:, self._arms_ids][:, 0, 0]
         self._shoulder_upper_limit = self._robot.data.soft_joint_pos_limits[:, self._arms_ids][:, 0, 1]
         

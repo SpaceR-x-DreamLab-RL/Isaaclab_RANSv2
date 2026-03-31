@@ -70,10 +70,10 @@ class PinguRobotCfg(RobotCoreCfg):
 
     # Randomization
     mass_rand_cfg: MassRandomizationCfg = MassRandomizationCfg(
-        enable=True, randomization_modes=["uniform"], body_name=root_id_name, max_delta=5.0
+        enable=False, randomization_modes=["uniform"], body_name=root_id_name, max_delta=5.0
     )
     com_rand_cfg: CoMRandomizationCfg = CoMRandomizationCfg(
-        enable=True, randomization_modes=["uniform"], body_name=root_id_name, max_delta=0.1
+        enable=False, randomization_modes=["uniform"], body_name=root_id_name, max_delta=0.1
     )
     wrench_rand_cfg = WrenchRandomizationCfg(
         enable=True,
@@ -117,13 +117,13 @@ class PinguRobotCfg(RobotCoreCfg):
         debug_vis=False,
     )
 
+    state_space: int = 0
+    gen_space: int = 0  # TODO: Add the generative space from the randomization
+
     # Spaces (depend on direct_thruster_control)
     # [thrust_dims..., auxiliary_dims] with reaction wheel at -1, others at -2, -3, ...
     # When direct_thruster_control=False: 3 movement, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
     # When direct_thruster_control=True: num_thrusters thrust, 4 motors for 2 arms (shoulder + elbow) + 1 reaction wheel
-    state_space: int = 0
-    gen_space: int = 0  # TODO: Add the generative space from the randomization
-
     @property
     def action_space(self) -> int:
         if self.direct_thruster_control:
