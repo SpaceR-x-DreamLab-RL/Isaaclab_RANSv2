@@ -222,16 +222,16 @@ def main() -> None:
                 new_action[:, 7] = 1.0
             elif action[3] > 0:  # left arm elbow
                 print("Mapping left arm elbow action +v")
-                new_action[:, 9] = 1.0
+                new_action[:, 8] = 1.0
             elif action[3] < 0:  # left arm elbow
                 print("Mapping left arm elbow action -v")
-                new_action[:, 9] = -1.0
+                new_action[:, 8] = -1.0
             elif action[5] > 0:  # reaction wheel positive
                 print("Mapping reaction wheel action +v")
-                new_action[:, 9] = 1.0
+                new_action[:, 8] = 1.0
             elif action[5] < 0:  # reaction wheel negative
                 print("Mapping reaction wheel action -v")
-                new_action[:, 9] = -1.0
+                new_action[:, 8] = -1.0
             else:
                 new_action = -1 * torch.ones((1,9), dtype=torch.float32, device=action.device)
                 new_action[:, 8:] = 0.0  # set arms and reaction wheel to 0 when no action is given
