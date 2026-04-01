@@ -7,6 +7,7 @@ import torch
 from gymnasium import spaces, vector
 
 from isaaclab.assets import Articulation
+from isaaclab.markers import ARROW_CFG, VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils import math as math_utils
@@ -179,7 +180,7 @@ class PinguRobot(RobotCore):
         # self._robot.set_external_force_and_torque(
         #    thrust_reset, thrust_reset, body_ids=self._thrusters_dof_idx, env_ids=env_ids
         # )
-        locking_joints = torch.zeros((len(env_ids), 3), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
+        locking_joints = torch.zeros((len(env_ids), 3), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/left_shoulder_joint', '/World/envs/env_0/Robot/joints/right_shoulder_joint', '/World/envs/env_0/Robot/joints/reaction_wheel_joint', '/World/envs/env_0/Robot/joints/left_elbow_joint', '/World/envs/env_0/Robot/joints/right_elbow_joint']]
         self._robot.set_joint_velocity_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
         self._robot.set_joint_position_target(locking_joints, joint_ids=self._locking_joint_dof_idx, env_ids=env_ids)
 
@@ -248,42 +249,14 @@ class PinguRobot(RobotCore):
                 device=self._device,
             )
             self._thrust_action = wp.to_torch(wp_thrust_action)
-
-        # Arms control (shared: indices thrust_dim .. thrust_dim+4)
-        """ Incremental position control (actions are changes to joint position targets)
-        """
-        self._robot_cfg.arms_action_scalar = 1.0
-        # Left shoulder
-        left_shoulder_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[0]] + actions[:, thrust_dim + 0] * self._robot_cfg.arms_action_scalar
-        self.arm_position_targets[:, 0] = torch.clamp(
-            left_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
-        )
-        # Left elbow
-        left_elbow_displacement = self._robot.data.joint_pos[:, self._left_levionarm_dof_idx[1]] + actions[:, thrust_dim + 1] * self._robot_cfg.arms_action_scalar
-        self.arm_position_targets[:, 1] = torch.clamp(
-            left_elbow_displacement, self._left_elbow_lower_limit, self._left_elbow_upper_limit
-        )
-        # Right shoulder
-        right_shoulder_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[0]] + actions[:, thrust_dim + 2] * self._robot_cfg.arms_action_scalar
-        self.arm_position_targets[:, 2] = torch.clamp(
-            right_shoulder_displacement, self._shoulder_lower_limit, self._shoulder_upper_limit
-        )
-        # Right elbow
-        right_elbow_displacement = self._robot.data.joint_pos[:, self._right_levionarm_dof_idx[1]] + actions[:, thrust_dim + 3] * self._robot_cfg.arms_action_scalar
-        self.arm_position_targets[:, 3] = torch.clamp(
-            right_elbow_displacement, self._right_elbow_lower_limit, self._right_elbow_upper_limit
-        )
-        
-        """ Direct position control (actions are directly mapped to joint position targets)
-        shoulder_action_scale = 1.0 * (self._shoulder_upper_limit - self._shoulder_lower_limit).unsqueeze(0)
-        left_elbow_action_scale = 1.0 * (self._left_elbow_upper_limit - self._left_elbow_lower_limit).unsqueeze(0)
-        right_elbow_action_scale = 1.0 * (self._right_elbow_upper_limit - self._right_elbow_lower_limit).unsqueeze(0)
-        
-        self.arm_position_targets[:, 0] = torch.clamp((self._actions[:, thrust_dim + 0] * shoulder_action_scale).squeeze(), self._shoulder_lower_limit, self._shoulder_upper_limit)  # Left shoulder
-        self.arm_position_targets[:, 2] = torch.clamp((self._actions[:, thrust_dim + 2] * shoulder_action_scale).squeeze(), self._shoulder_lower_limit, self._shoulder_upper_limit)  # Right shoulder
-        self.arm_position_targets[:, 1] = torch.clamp((self._actions[:, thrust_dim + 1] * left_elbow_action_scale).squeeze(), self._left_elbow_lower_limit, self._left_elbow_upper_limit)  # Left elbow
-        self.arm_position_targets[:, 3] = torch.clamp((self._actions[:, thrust_dim + 3] * right_elbow_action_scale).squeeze(), self._right_elbow_lower_limit, self._right_elbow_upper_limit)  # Right elbow
-        """
+            
+        # Arms control: absolute position, actions in [-1, 1] mapped to [lower_limit, upper_limit]
+        # target = lower + (action * 0.5 + 0.5) * (upper - lower)
+        alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
+        self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
+        self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
+        self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
+        self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
 
         if self._robot_cfg.has_reaction_wheel:
             # Reaction wheel: last action (index thrust_dim+4 or -1)
@@ -365,6 +338,45 @@ class PinguRobot(RobotCore):
         if self._robot_cfg.contact_sensor_active:
             self.scene.sensors["robot_contacts"] = ContactSensor(self._robot_cfg.body_contact_forces)
             self.contacts: ContactSensor = self.scene["robot_contacts"]
+
+    def create_robot_visualization(self) -> None:
+        """Creates arrow markers at each thruster position pointing in the thrust direction."""
+        marker_cfg = ARROW_CFG.copy()
+        marker_cfg.prim_path = "/Visuals/Robot/Pingu/thrusters"
+        marker_cfg.markers["arrow"].arrow_body_length = 0.25
+        marker_cfg.markers["arrow"].arrow_body_radius = 0.03
+        marker_cfg.markers["arrow"].arrow_head_radius = 0.07
+        marker_cfg.markers["arrow"].arrow_head_length = 0.12
+        marker_cfg.markers["arrow"].visual_material.diffuse_color = (1.0, 0.5, 0.0)
+        self._thruster_visualizer = VisualizationMarkers(marker_cfg)
+
+    def update_robot_visualization(self) -> None:
+        """Updates thruster arrows: world position, heading from thrust direction, scale from magnitude."""
+        N = self._num_envs
+        T = self._robot_cfg.num_thrusters  # 8
+
+        # Thruster body poses in world frame — (N, T, 3) and (N, T, 4)
+        world_positions = self._robot.data.body_link_pos_w[:, self._thrusters_dof_idx].reshape(-1, 3)  # (N*T, 3)
+        thruster_quats = self._robot.data.body_link_quat_w[:, self._thrusters_dof_idx].reshape(-1, 4)  # (N*T, 4)
+
+        # --- Orientations: thruster local +Z in world frame is the thrust direction ---
+        z_local = torch.tensor([[0., 0., 1.]], device=self._device).expand(N * T, -1)  # (N*T, 3)
+        dirs_w = math_utils.quat_apply(thruster_quats, z_local)  # (N*T, 3)
+
+        # ARROW_CFG points along its local +X axis. Negate to get exhaust (opposite of thrust).
+        # Build a Z-rotation quat from +X to -dirs_w: angle = atan2(-dy, -dx)
+        angle = torch.atan2(-dirs_w[:, 1], -dirs_w[:, 0])  # (N*T,)
+        half = angle * 0.5
+        zeros = torch.zeros_like(half)
+        # quat format: (w, x, y, z)
+        world_quats = torch.stack([torch.cos(half), zeros, zeros, torch.sin(half)], dim=-1)  # (N*T, 4)
+
+        # --- Scale: proportional to normalized thrust; hidden (near-zero) when inactive ---
+        thrust_mag = self._thrust_action[:, :, 2]  # (N, T)
+        normalized = (thrust_mag / self._robot_cfg.max_thrust).clamp(0.0, 1.0).reshape(-1)  # (N*T,)
+        scale_vals = normalized.clamp(min=0.01).unsqueeze(-1).expand(-1, 3).contiguous()  # (N*T, 3)
+
+        self._thruster_visualizer.visualize(world_positions, world_quats, scales=scale_vals)
 
     ##
     # Derived base properties

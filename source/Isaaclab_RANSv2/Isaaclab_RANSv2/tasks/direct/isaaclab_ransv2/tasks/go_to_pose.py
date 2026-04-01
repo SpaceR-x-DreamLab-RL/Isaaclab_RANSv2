@@ -187,8 +187,6 @@ class GoToPoseTask(TaskCore):
         self._task_data[:, 4] = torch.sin(self._heading_error)
         self._task_data[:, 5:7] = self._robot.root_com_lin_vel_b[self._env_ids, :2]
         self._task_data[:, 7] = self._robot.root_com_ang_vel_w[self._env_ids, -1]
-
-        print(target_heading_error[0] * 180 / math.pi)
         
         for randomizer in self.randomizers:
             randomizer.observations(observations=self._task_data)

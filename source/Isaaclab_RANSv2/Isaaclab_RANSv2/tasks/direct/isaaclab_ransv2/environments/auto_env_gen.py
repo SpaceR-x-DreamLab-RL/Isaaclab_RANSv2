@@ -169,7 +169,9 @@ class AutoEnvGen(DirectRLEnv):
     def _set_debug_vis_impl(self, debug_vis: bool) -> None:
         if debug_vis:
             self.task_api.create_task_visualization()
+            self.robot_api.create_robot_visualization()
 
     def _debug_vis_callback(self, event) -> None:
         if self.cfg.debug_vis:
             self.task_api.update_task_visualization()
+            self.robot_api.update_robot_visualization()

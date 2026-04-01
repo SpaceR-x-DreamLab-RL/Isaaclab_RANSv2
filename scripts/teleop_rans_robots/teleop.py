@@ -189,6 +189,54 @@ def main() -> None:
 
             return action
         elif robot_name == "Cubo":
+            # Direct thruster control
+            new_action = -1 * torch.ones((1,9), dtype=torch.float32, device=action.device)
+            new_action[:, 8:] = 0.0  # set arms and reaction wheel to 0 when no action is given
+            if action[0] > 0:  # forward
+                print("Mapping forward action")
+                new_action[:, 3] = 1.0
+                new_action[:, 6] = 1.0
+            elif action[0] < 0:  # backward
+                print("Mapping backward action")
+                new_action[:, 2] = 1.0
+                new_action[:, 7] = 1.0
+            elif action[1] > 0:  # left
+                print("Mapping left action")
+                new_action[:, 1] = 1.0
+                new_action[:, 4] = 1.0
+            elif action[1] < 0:  # right
+                print("Mapping right action")
+                new_action[:, 0] = 1.0
+                new_action[:, 5] = 1.0
+            elif action[2] > 0:  # rotate ccw
+                print("Mapping rotate ccw action")
+                new_action[:, 0] = 1.0
+                new_action[:, 2] = 1.0
+                new_action[:, 4] = 1.0
+                new_action[:, 6] = 1.0
+            elif action[2] < 0:  # rotate cw
+                print("Mapping rotate cw action")
+                new_action[:, 1] = 1.0
+                new_action[:, 3] = 1.0
+                new_action[:, 5] = 1.0
+                new_action[:, 7] = 1.0
+            elif action[3] > 0:  # left arm elbow
+                print("Mapping left arm elbow action +v")
+                new_action[:, 9] = 1.0
+            elif action[3] < 0:  # left arm elbow
+                print("Mapping left arm elbow action -v")
+                new_action[:, 9] = -1.0
+            elif action[5] > 0:  # reaction wheel positive
+                print("Mapping reaction wheel action +v")
+                new_action[:, 9] = 1.0
+            elif action[5] < 0:  # reaction wheel negative
+                print("Mapping reaction wheel action -v")
+                new_action[:, 9] = -1.0
+            else:
+                new_action = -1 * torch.ones((1,9), dtype=torch.float32, device=action.device)
+                new_action[:, 8:] = 0.0  # set arms and reaction wheel to 0 when no action is given
+            return new_action
+        
             # new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
             # if action[0] > 0:  # forward
             #     print("Mapping forward action")
@@ -214,32 +262,32 @@ def main() -> None:
             #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
 
             # return new_action
-            new_action = torch.zeros((1,3), dtype=torch.float32, device=action.device)
-            if action[0] > 0:  # forward
-                print("Mapping forward action")
-                new_action = torch.tensor([[1, 0, 0]], dtype=torch.float32, device=action.device)
-            elif action[0] < 0:  # backward
-                print("Mapping backward action")
-                new_action = torch.tensor([[-1, 0, 0]], dtype=torch.float32, device=action.device)
-            elif action[1] > 0:  # left
-                print("Mapping left action")
-                new_action = torch.tensor([[0, 1, 0]], dtype=torch.float32, device=action.device)
-            elif action[1] < 0:  # right
-                print("Mapping right action")
-                new_action = torch.tensor([[0, -1, 0]], dtype=torch.float32, device=action.device)
-            elif action[2] > 0:  # rotate cw
-                print("Mapping rotate cw action")
-                new_action = torch.tensor([[0, 0, 1]], dtype=torch.float32, device=action.device)
-            elif action[2] < 0:  # rotate ccw
-                print("Mapping rotate ccw action")
-                new_action = torch.tensor([[0, 0, -1]], dtype=torch.float32, device=action.device)
-            else:
-                new_action = torch.tensor([[0, 0, 0]], dtype=torch.float32, device=action.device)
+            # new_action = torch.zeros((1,3), dtype=torch.float32, device=action.device)
+            # if action[0] > 0:  # forward
+            #     print("Mapping forward action")
+            #     new_action = torch.tensor([[1, 0, 0]], dtype=torch.float32, device=action.device)
+            # elif action[0] < 0:  # backward
+            #     print("Mapping backward action")
+            #     new_action = torch.tensor([[-1, 0, 0]], dtype=torch.float32, device=action.device)
+            # elif action[1] > 0:  # left
+            #     print("Mapping left action")
+            #     new_action = torch.tensor([[0, 1, 0]], dtype=torch.float32, device=action.device)
+            # elif action[1] < 0:  # right
+            #     print("Mapping right action")
+            #     new_action = torch.tensor([[0, -1, 0]], dtype=torch.float32, device=action.device)
+            # elif action[2] > 0:  # rotate cw
+            #     print("Mapping rotate cw action")
+            #     new_action = torch.tensor([[0, 0, 1]], dtype=torch.float32, device=action.device)
+            # elif action[2] < 0:  # rotate ccw
+            #     print("Mapping rotate ccw action")
+            #     new_action = torch.tensor([[0, 0, -1]], dtype=torch.float32, device=action.device)
+            # else:
+            #     new_action = torch.tensor([[0, 0, 0]], dtype=torch.float32, device=action.device)
                 
-            return new_action
+            # return new_action
         
         elif robot_name == "FloatingPlatform":
-            new_action = torch.zeros((1,3), dtype=torch.float32, device=action.device)
+            new_action = torch.zeros((1,8), dtype=torch.float32, device=action.device)
             if action[0] > 0:  # forward
                 print("Mapping forward action")
                 new_action = torch.tensor([[1, 0, 0]], dtype=torch.float32, device=action.device)
@@ -252,59 +300,114 @@ def main() -> None:
             elif action[1] < 0:  # right
                 print("Mapping right action")
                 new_action = torch.tensor([[0, -1, 0]], dtype=torch.float32, device=action.device)
-            elif action[2] > 0:  # rotate cw
-                print("Mapping rotate cw action")
-                new_action = torch.tensor([[0, 0, 1]], dtype=torch.float32, device=action.device)
-            elif action[2] < 0:  # rotate ccw
+            elif action[2] > 0:  # rotate ccw
                 print("Mapping rotate ccw action")
+                new_action = torch.tensor([[0, 0, 1]], dtype=torch.float32, device=action.device)
+            elif action[2] < 0:  # rotate cw
+                print("Mapping rotate cw action")
                 new_action = torch.tensor([[0, 0, -1]], dtype=torch.float32, device=action.device)
             else:
-                new_action = torch.tensor([[0, 0, 0]], dtype=torch.float32, device=action.device)
+                new_action = torch.zeros((1,8), dtype=torch.float32, device=action.device)
                 
             return new_action
 
         elif robot_name == "Pingu":
-            new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
+            # Direct thruster control
+            new_action = -1 * torch.ones((1,13), dtype=torch.float32, device=action.device)
+            new_action[:, 8:] = 0.0  # set arms and reaction wheel to 0 when no action is given
             if action[0] > 0:  # forward
                 print("Mapping forward action")
-                new_action = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+                new_action[:, 3] = 1.0
+                new_action[:, 6] = 1.0
             elif action[0] < 0:  # backward
                 print("Mapping backward action")
-                new_action = torch.tensor([[-1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+                new_action[:, 2] = 1.0
+                new_action[:, 7] = 1.0
             elif action[1] > 0:  # left
                 print("Mapping left action")
-                new_action = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0]], device=action.device)
+                new_action[:, 1] = 1.0
+                new_action[:, 4] = 1.0
             elif action[1] < 0:  # right
                 print("Mapping right action")
-                new_action = torch.tensor([[0, -1, 0, 0, 0, 0, 0, 0]], device=action.device)
-            elif action[2] > 0:  # rotate cw
-                print("Mapping rotate cw action")
-                new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 0]], device=action.device)
-            elif action[2] < 0:  # rotate ccw
+                new_action[:, 0] = 1.0
+                new_action[:, 5] = 1.0
+            elif action[2] > 0:  # rotate ccw
                 print("Mapping rotate ccw action")
-                new_action = torch.tensor([[0, 0, -1, 0, 0, 0, 0, 0]], device=action.device)
+                new_action[:, 0] = 1.0
+                new_action[:, 2] = 1.0
+                new_action[:, 4] = 1.0
+                new_action[:, 6] = 1.0
+            elif action[2] < 0:  # rotate cw
+                print("Mapping rotate cw action")
+                new_action[:, 1] = 1.0
+                new_action[:, 3] = 1.0
+                new_action[:, 5] = 1.0
+                new_action[:, 7] = 1.0
             elif action[3] > 0:  # left arm elbow
                 print("Mapping left arm elbow action +v")
-                new_action = torch.tensor([[0, 0, 0, 0, 1, 0, 0, 0]], device=action.device)
+                new_action[:, 10] = 1.0
             elif action[3] < 0:  # left arm elbow
                 print("Mapping left arm elbow action -v")
-                new_action = torch.tensor([[0, 0, 0, 0, -1, 0, 0, 0]], device=action.device)
+                new_action[:, 10] = -1.0
             elif action[4] > 0:  # right arm elbow
                 print("Mapping right arm elbow action +v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
+                new_action[:, 10] = 1.0
             elif action[4] < 0:  # right arm elbow
                 print("Mapping right arm elbow action -v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, -1, 0]], device=action.device)
+                new_action[:, 10] = -1.0
             elif action[5] > 0:  # reaction wheel positive
                 print("Mapping reaction wheel action +v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
+                new_action[:, -1] = 1.0
             elif action[5] < 0:  # reaction wheel negative
                 print("Mapping reaction wheel action -v")
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, -1]], device=action.device)
+                new_action[:, -1] = -1.0
             else:
-                new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
-
+                new_action = -1 * torch.ones((1,13), dtype=torch.float32, device=action.device)
+                new_action[:, 8:] = 0.0  # set arms and reaction wheel to 0 when no action is given
             return new_action
+            
+            # Mapping thrusters
+            # new_action = torch.tensor([[0,0,0,0,0,0,0,0]], device=action.device)
+            # if action[0] > 0:  # forward
+            #     print("Mapping forward action")
+            #     new_action = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[0] < 0:  # backward
+            #     print("Mapping backward action")
+            #     new_action = torch.tensor([[-1, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[1] > 0:  # left
+            #     print("Mapping left action")
+            #     new_action = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[1] < 0:  # right
+            #     print("Mapping right action")
+            #     new_action = torch.tensor([[0, -1, 0, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[2] > 0:  # rotate cw
+            #     print("Mapping rotate cw action")
+            #     new_action = torch.tensor([[0, 0, 1, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[2] < 0:  # rotate ccw
+            #     print("Mapping rotate ccw action")
+            #     new_action = torch.tensor([[0, 0, -1, 0, 0, 0, 0, 0]], device=action.device)
+            # elif action[3] > 0:  # left arm elbow
+            #     print("Mapping left arm elbow action +v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, 1, 0, 0, 0]], device=action.device)
+            # elif action[3] < 0:  # left arm elbow
+            #     print("Mapping left arm elbow action -v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, -1, 0, 0, 0]], device=action.device)
+            # elif action[4] > 0:  # right arm elbow
+            #     print("Mapping right arm elbow action +v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 0]], device=action.device)
+            # elif action[4] < 0:  # right arm elbow
+            #     print("Mapping right arm elbow action -v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, -1, 0]], device=action.device)
+            # elif action[5] > 0:  # reaction wheel positive
+            #     print("Mapping reaction wheel action +v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], device=action.device)
+            # elif action[5] < 0:  # reaction wheel negative
+            #     print("Mapping reaction wheel action -v")
+            #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, -1]], device=action.device)
+            # else:
+            #     new_action = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], device=action.device)
+
+            # return new_action
         else:
             omni.log.warn(f"Unknown robot '{robot_name}'. Using default action mapping.")
             return action
@@ -406,6 +509,7 @@ def main() -> None:
                     
         except Exception as e:
             omni.log.error(f"Error during simulation step: {e}")
+            breakpoint()
             break
 
     # close the simulator

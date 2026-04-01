@@ -45,15 +45,15 @@ def compute_thruster_mapping(
     if act[2] != 0.0:
         mag = wp.abs(act[2]) * max_thrust
         if act[2] < 0.0: 
-            t0 += mag
-            t2 += mag
-            t4 += mag
-            t6 += mag
-        else:
             t1 += mag
             t3 += mag
             t5 += mag
             t7 += mag
+        else:
+            t0 += mag
+            t2 += mag
+            t4 += mag
+            t6 += mag
 
     # Clamp and Write to Global Memory
     thrust_action[tid, 0] = wp.vec(0.0, 0.0, wp.clamp(t0, 0.0, 1.0))

@@ -270,6 +270,14 @@ class RobotCore:
     def configure_gym_env_spaces(self) -> None:
         raise NotImplementedError
 
+    def create_robot_visualization(self) -> None:
+        """Creates visualization markers for the robot. Override in subclasses."""
+        pass
+
+    def update_robot_visualization(self) -> None:
+        """Updates visualization markers for the robot. Override in subclasses."""
+        pass
+
     @property
     def eval_data(self) -> dict:
         raise NotImplementedError

@@ -7,6 +7,7 @@ import torch
 from gymnasium import spaces, vector
 
 from isaaclab.assets import Articulation
+from isaaclab.markers import ARROW_CFG, VisualizationMarkers
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils import math as math_utils
@@ -113,7 +114,7 @@ class CuboRobot(RobotCore):
         # self._robot.set_external_force_and_torque(
         #    thrust_reset, thrust_reset, body_ids=self._thrusters_dof_idx, env_ids=env_ids
         # )
-        locking_joints = torch.zeros((len(env_ids), 4), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/rw_revolute_joint', ]]
+        locking_joints = torch.zeros((len(env_ids), 4), device=self._device) # [['/World/envs/env_0/Robot/joints/x_lock_joint', '/World/envs/env_0/Robot/joints/y_lock_joint', '/World/envs/env_0/Robot/joints/base_joint', '/World/envs/env_0/Robot/joints/reaction_wheel_joint', ]]
         self._robot.set_joint_velocity_target(locking_joints, env_ids=env_ids)
         self._robot.set_joint_position_target(locking_joints, env_ids=env_ids)
 
@@ -209,13 +210,15 @@ class CuboRobot(RobotCore):
             
         self._previous_actions = self._actions.clone()
         self._actions = actions
+        
+        # Thrust: first 3 (body-frame) or num_thrusters (direct); arms and rw are the same after that
+        thrust_dim = self._robot_cfg.num_thrusters if self._robot_cfg.direct_thruster_control else 3
 
         self._thrust_action.fill_(0.0)
 
         if self._robot_cfg.direct_thruster_control:
             # Direct thruster mode: one command per thruster
-            n_thrust = self._robot_cfg.num_thrusters
-            thrust_mag = (actions[:, :n_thrust] * 0.5 + 0.5) * self._robot_cfg.max_thrust
+            thrust_mag = (actions[:, :thrust_dim] * 0.5 + 0.5) * self._robot_cfg.max_thrust
             self._thrust_action[:, :, 2] = thrust_mag # .clamp(0.0, self._robot_cfg.max_thrust)
 
         else:
@@ -238,9 +241,7 @@ class CuboRobot(RobotCore):
             self._thrust_action = wp.to_torch(wp_thrust_action)
 
         if self._robot_cfg.has_reaction_wheel:
-            self._reaction_wheel_action = (
-                actions[:, -1:] * self._robot_cfg.reaction_wheel_scale
-            )
+            self._reaction_wheel_action = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
 
         self.scalar_logger.log(
             "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
@@ -295,6 +296,45 @@ class CuboRobot(RobotCore):
         if self._robot_cfg.contact_sensor_active:
             self.scene.sensors["robot_contacts"] = ContactSensor(self._robot_cfg.body_contact_forces)
             self.contacts: ContactSensor = self.scene["robot_contacts"]
+            
+    def create_robot_visualization(self) -> None:
+        """Creates arrow markers at each thruster position pointing in the thrust direction."""
+        marker_cfg = ARROW_CFG.copy()
+        marker_cfg.prim_path = "/Visuals/Robot/Pingu/thrusters"
+        marker_cfg.markers["arrow"].arrow_body_length = 0.25
+        marker_cfg.markers["arrow"].arrow_body_radius = 0.03
+        marker_cfg.markers["arrow"].arrow_head_radius = 0.07
+        marker_cfg.markers["arrow"].arrow_head_length = 0.12
+        marker_cfg.markers["arrow"].visual_material.diffuse_color = (1.0, 0.5, 0.0)
+        self._thruster_visualizer = VisualizationMarkers(marker_cfg)
+
+    def update_robot_visualization(self) -> None:
+        """Updates thruster arrows: world position, heading from thrust direction, scale from magnitude."""
+        N = self._num_envs
+        T = self._robot_cfg.num_thrusters  # 8
+
+        # Thruster body poses in world frame — (N, T, 3) and (N, T, 4)
+        world_positions = self._robot.data.body_link_pos_w[:, self._thrusters_dof_idx].reshape(-1, 3)  # (N*T, 3)
+        thruster_quats = self._robot.data.body_link_quat_w[:, self._thrusters_dof_idx].reshape(-1, 4)  # (N*T, 4)
+
+        # --- Orientations: thruster local +Z in world frame is the thrust direction ---
+        z_local = torch.tensor([[0., 0., 1.]], device=self._device).expand(N * T, -1)  # (N*T, 3)
+        dirs_w = math_utils.quat_apply(thruster_quats, z_local)  # (N*T, 3)
+
+        # ARROW_CFG points along its local +X axis. Negate to get exhaust (opposite of thrust).
+        # Build a Z-rotation quat from +X to -dirs_w: angle = atan2(-dy, -dx)
+        angle = torch.atan2(-dirs_w[:, 1], -dirs_w[:, 0])  # (N*T,)
+        half = angle * 0.5
+        zeros = torch.zeros_like(half)
+        # quat format: (w, x, y, z)
+        world_quats = torch.stack([torch.cos(half), zeros, zeros, torch.sin(half)], dim=-1)  # (N*T, 4)
+
+        # --- Scale: proportional to normalized thrust; hidden (near-zero) when inactive ---
+        thrust_mag = self._thrust_action[:, :, 2]  # (N, T)
+        normalized = (thrust_mag / self._robot_cfg.max_thrust).clamp(0.0, 1.0).reshape(-1)  # (N*T,)
+        scale_vals = normalized.clamp(min=0.01).unsqueeze(-1).expand(-1, 3).contiguous()  # (N*T, 3)
+
+        self._thruster_visualizer.visualize(world_positions, world_quats, scales=scale_vals)
 
     ##
     # Derived base properties
