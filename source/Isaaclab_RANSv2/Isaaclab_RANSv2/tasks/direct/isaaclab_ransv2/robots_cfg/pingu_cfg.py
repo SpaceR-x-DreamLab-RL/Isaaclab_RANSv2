@@ -37,7 +37,7 @@ class PinguRobotCfg(RobotCoreCfg):
     left_levionarm_dof_name = ["left_shoulder_joint", "left_elbow_joint"]
     right_levionarm_dof_name = ["right_shoulder_joint", "right_elbow_joint"]
     reaction_wheel_dof_name = ["reaction_wheel_joint"]
-    reaction_wheel_scale = 8.0  # [Nm]: scale from [-1, 1] action to effort (max is 10.0 Nm from URDF)
+    reaction_wheel_scale = 0.1  # [Nm]: scale from [-1, 1] action to effort (max is 10.0 Nm from URDF)
 
     root_id_name = "base_link"
     rew_action_rate_scale = -0.12 / 8
