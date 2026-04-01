@@ -7,6 +7,39 @@ python scripts/teleop_rans_robots/teleop.py --task=Isaaclab-RANSv2-AutoEnvGen-v0
 python scripts/rsl_rl/train.py --task=Isaaclab-RANSv2-AutoEnvGen-v0 env.robot_name=Cubo env.task_name=GoToPosition --headless
 ```
 
+Assets folder structure of `spacer-thedreamlab-assets.zip` (Zip file of Robots renamed to spacer-thedreamlab-assets)
+```
+Robots
+| SpaceR-TheDreamLab
+| | Cubo
+| | FloatingPlatform
+| | Intball2
+| | ...
+| | UniluFP_RL
+```
+
+If you want `Isaaclab` locally on your machine, uncomment the following line from `docker-compose.yaml`
+```
+- type: bind
+    source: ../../Isaaclab/source
+    target: ${DOCKER_ISAACLAB_PATH}/source
+```
+
+Clone [Isaaclab](https://github.com/SpaceR-x-DreamLab-RL/Isaaclab) (our version) outside `Isaaclab_RANSv2` project.
+Should look like:
+```
+your dir
+| Isaaclab (our version)
+| Isaaclab_RANSv2
+```
+
+Install the assets manually. Check inside the `Dockerfile.base` for the latest `ASSETS_URL`.
+```
+wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}"
+unzip -d Isaaclab/source/isaaclab_assets/data /tmp/spacer-dreamlab-assets.zip
+rm /tmp/spacer-dreamlab-assets.zip
+```
+
 ## Overview
 
 This project/repository serves as a template for building projects or extensions based on Isaac Lab.
