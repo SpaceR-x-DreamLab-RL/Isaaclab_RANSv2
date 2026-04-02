@@ -136,6 +136,7 @@ class PinguRobot(RobotCore):
 
         self.scalar_logger.add_log("robot_state", "AVG/thrusters", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_velocity", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/action_rate", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
@@ -268,6 +269,10 @@ class PinguRobot(RobotCore):
         self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
         if self._robot_cfg.has_reaction_wheel:
             self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
+            self.scalar_logger.log(
+                "robot_state", "AVG/reaction_wheel_velocity",
+                self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1),
+            )
 
         # debug print out the full final action vector sent to the robot
         # print("Final action vector sent to the robot: ", self._actions)
@@ -308,6 +313,11 @@ class PinguRobot(RobotCore):
         # Reaction wheel
         if self._robot_cfg.has_reaction_wheel:
             self._robot.set_joint_effort_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
+
+    @property
+    def reaction_wheel_velocity(self) -> torch.Tensor:
+        """Reaction wheel joint velocity in rad/s. Shape is (num_instances,)."""
+        return self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1)
 
     def set_velocity(
         self,

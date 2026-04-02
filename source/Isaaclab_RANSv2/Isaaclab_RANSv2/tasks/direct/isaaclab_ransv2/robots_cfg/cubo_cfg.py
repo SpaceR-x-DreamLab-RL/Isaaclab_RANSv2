@@ -76,7 +76,7 @@ class CuboRobotCfg(RobotCoreCfg):
 
     if has_reaction_wheel:
         reaction_wheel_dof_name = ["reaction_wheel_joint"]
-        reaction_wheel_scale = 0.1  # [Nm]
+        reaction_wheel_scale = 0.1 # 200 # 0.1  # [Nm]
 
     # Sensors
     body_contact_forces: ContactSensorCfg = ContactSensorCfg(
