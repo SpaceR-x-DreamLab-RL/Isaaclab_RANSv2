@@ -34,6 +34,13 @@ class CuboRobotCfg(RobotCoreCfg):
 
     thrusters_dof_name = [f"thruster_{i}_link" for i in range(1, num_thrusters + 1)]
     root_id_name = "base_link"
+    base_joint_dof_name = ["base_joint"]
+    if has_reaction_wheel:
+        reaction_wheel_dof_name = ["reaction_wheel_joint"]
+        reaction_wheel_scale = 0.1 # 200 # 0.1  # [Nm]
+        b = 5.372473380648529e-05 # N*m*s/rad (viscous damping)
+        J_rw = 0.00112703295596 # kg*m^2
+
     rew_action_rate_scale = -0.12 / 8
     rew_joint_accel_scale = -2.5e-6
 
@@ -73,10 +80,6 @@ class CuboRobotCfg(RobotCoreCfg):
         rescaling_ranges=[(0.8, 1.0)],
         clip_actions=[(-1, 1)],
     )
-
-    if has_reaction_wheel:
-        reaction_wheel_dof_name = ["reaction_wheel_joint"]
-        reaction_wheel_scale = 0.1  # [Nm]
 
     # Sensors
     body_contact_forces: ContactSensorCfg = ContactSensorCfg(

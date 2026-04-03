@@ -5,6 +5,7 @@
 
 import torch
 from gymnasium import spaces, vector
+import math
 
 from isaaclab.assets import Articulation
 from isaaclab.markers import ARROW_CFG, VisualizationMarkers
@@ -39,6 +40,11 @@ class PinguRobot(RobotCore):
         self._dim_robot_obs = self._robot_cfg.observation_space
         self._dim_robot_act = self._robot_cfg.action_space
         self._dim_gen_act = self._robot_cfg.gen_space
+        
+        # Physical parameters for reaction wheel dynamics
+        if self._robot_cfg.has_reaction_wheel:
+            self.b = self._robot_cfg.b
+            self.J_rw = self._robot_cfg.J_rw
 
         # Buffers
         self.initialize_buffers()
@@ -101,8 +107,10 @@ class PinguRobot(RobotCore):
             (self._num_envs, self._robot_cfg.num_thrusters, 3), device=self._device, dtype=torch.float32
         )
         if self._robot_cfg.has_reaction_wheel:
-            self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
-            
+            self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32) #torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32) #
+            self._reaction_wheel_to_body_torque_action = torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32)
+            self.omega_reation_wheel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
+
         self.arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
 
     def run_setup(self, robot: Articulation):
@@ -135,7 +143,8 @@ class PinguRobot(RobotCore):
         super().create_logs()
 
         self.scalar_logger.add_log("robot_state", "AVG/thrusters", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/torque_to_body_from_reaction_wheel", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_internal_velocity", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/action_rate", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
@@ -193,6 +202,9 @@ class PinguRobot(RobotCore):
             rw_reset = torch.zeros((len(env_ids), 1), device=self._device, dtype=torch.float32)
             self._robot.set_joint_velocity_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
             self._robot.set_joint_effort_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
+            self.omega_reation_wheel[env_ids] = 0
+            self._reaction_wheel_to_body_torque_action[env_ids] = 0
+
 
     def process_actions(self, actions: torch.Tensor):
         """Process the actions for the robot.
@@ -259,19 +271,29 @@ class PinguRobot(RobotCore):
         self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
 
         if self._robot_cfg.has_reaction_wheel:
-            # Reaction wheel: last action (index thrust_dim+4 or -1)
-            self._reaction_wheel_action = (
-                actions[:, thrust_dim + 4] * self._robot_cfg.reaction_wheel_scale
-            ).unsqueeze(-1)
+            dt = self.scene.physics_dt * 6.0
+            commanded_torque = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
+            omega_prev = self.omega_reation_wheel.clone()
+            self.omega_reation_wheel = commanded_torque / self.b + (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
+            reaction_torque = -self.b * (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
+            # self._reaction_wheel_action[:, :, 2] = reaction_torque
+            # self._reaction_wheel_to_body_torque_action[:, :, 2] = -reaction_torque
+            self._reaction_wheel_action = reaction_torque
 
-        # Log data for monitoring
-        self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
+        self.scalar_logger.log(
+            "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
+        )
         if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
-
-        # debug print out the full final action vector sent to the robot
-        # print("Final action vector sent to the robot: ", self._actions)
-
+            self.scalar_logger.log("robot_state", "AVG/torque_to_body_from_reaction_wheel", self._reaction_wheel_to_body_torque_action[:, 0, 2])
+            self.scalar_logger.log(
+                "robot_state", "AVG/reaction_wheel_internal_velocity",
+                self.omega_reation_wheel.squeeze(-1),
+            )
+            # self.scalar_logger.log(
+            #     "robot_state", "AVG/reaction_wheel_velocity",
+            #     self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1),
+            # )
+        
     def compute_physics(self):
         pass
 
@@ -285,7 +307,6 @@ class PinguRobot(RobotCore):
         self._robot.set_external_force_and_torque(
             self._thrust_action, torch.zeros_like(self._thrust_action), body_ids=self._thrusters_dof_idx
         )
-        
 
         # Arms position control        
         self._robot.set_joint_position_target(self.arm_position_targets, joint_ids=self._arms_ids)
@@ -307,7 +328,22 @@ class PinguRobot(RobotCore):
 
         # Reaction wheel
         if self._robot_cfg.has_reaction_wheel:
+            # Apply the reaction wheel torque as an external torque on the base link (opposite on the wheel joint itself)
+            # self._robot.set_external_force_and_torque(
+            #     torch.zeros_like(self._reaction_wheel_to_body_torque_action),
+            #     self._reaction_wheel_to_body_torque_action,
+            #     body_ids=self._root_idx,
+            # )
             self._robot.set_joint_effort_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
+
+    @property
+    def reaction_wheel_velocity(self) -> torch.Tensor:
+        """Reaction wheel joint velocity in rad/s. Shape is (num_instances,).
+        
+        Returns the internally computed velocity from the reaction wheel dynamics model,
+        not the Isaac joint velocity.
+        """
+        return self.omega_reation_wheel.squeeze(-1) if self._robot_cfg.has_reaction_wheel else torch.zeros(self._num_envs, device=self._device)
 
     def set_velocity(
         self,

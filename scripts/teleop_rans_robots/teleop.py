@@ -37,6 +37,14 @@ parser.add_argument(
     default=False,
     help="Enable Pinocchio.",
 )
+parser.add_argument(
+    "--rw_test",
+    action="store_true",
+    default=False,
+    help="Run reaction wheel test mode: apply constant torque and plot velocity response.",
+)
+parser.add_argument("--rw_torque", type=float, default=1.0, help="Reaction wheel torque command in [-1, 1] for rw_test mode.")
+parser.add_argument("--rw_duration", type=float, default=10.0, help="Duration in seconds for rw_test mode.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -482,16 +490,166 @@ def main() -> None:
     env.reset()
     teleop_interface.reset()
 
-    print("Teleoperation started. Press 'R' to reset the environment.")
+    if args_cli.rw_test:
+        # --- Reaction wheel test mode ---
+        print(f"Reaction wheel test mode: torque={args_cli.rw_torque}, duration={args_cli.rw_duration}s")
+        robot_name = env.robot_cfg.robot_name
+        sim_dt = env.step_dt  # step dt (physics_dt * decimation)
+        total_steps = int(args_cli.rw_duration / sim_dt)
 
-    # simulate environment
-    while simulation_app.is_running():
-        try:
-            # run everything in inference mode
+        # Build a constant action that only drives the reaction wheel
+        act_dim = env.action_space.shape[-1]
+        base_action = torch.zeros((1, act_dim), device=env.device)
+        if robot_name in ("Cubo", "Pingu"):
+            # Reaction wheel is always the last action dimension
+            base_action[:, -1] = args_cli.rw_torque
+            # base_action[:, 0] = args_cli.rw_torque
+            # base_action[:, 2] = args_cli.rw_torque
+            # base_action[:, 4] = args_cli.rw_torque
+            # base_action[:, 6] = args_cli.rw_torque
+            # Arms 
+            # base_action[:, 8:10] = -1.0
+            # base_action[:, 10:12] = 1.0
+        else:
+            omni.log.error(f"rw_test not supported for robot '{robot_name}'")
+            env.close()
+            simulation_app.close()
+            return
+
+        # For Cubo with direct_thruster_control, thrusters expect [-1,1] mapped to [0,max].
+        # Set thrusters to -1 so they produce zero thrust.
+        if env.robot_cfg.direct_thruster_control:
+            base_action[:, :env.robot_cfg.num_thrusters] = -1.0
+
+        time_log = []
+        rw_vel_log = []
+        torque_log = []
+        robot_ang_vel_log = []
+
+        print(f"Running {total_steps} steps...")
+        for step_i in range(total_steps):
+            if not simulation_app.is_running():
+                break
+            with torch.inference_mode():  # set a breakpoint here to inspect the environment state during the test
+                actions = base_action.repeat(env.num_envs, 1)
+                env.step(actions)
+                
+                # if step_i > 300:
+                #     base_action[:, :env.robot_cfg.num_thrusters] = -1.0
+
+                # Read reaction wheel velocity from robot api (internally computed)
+                rw_vel = env.robot_api.reaction_wheel_velocity.mean().item()
+                robot_ang_vel = env.robot_api.root_com_ang_vel_w[:, -1].mean().item()
+                t = (step_i + 1) * sim_dt
+                
+                # Get the actual applied torque from the robot's internal state
+                applied_torque = env.robot_api._reaction_wheel_action.mean().item() #env.robot_api._reaction_wheel_action[:, :, 2].mean().item()
+
+                time_log.append(t)
+                rw_vel_log.append(rw_vel)
+                torque_log.append(applied_torque)
+                robot_ang_vel_log.append(robot_ang_vel)
+
+        # --- Plot results ---
+        # import matplotlib.pyplot as plt
+
+        # fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+        # # Velocity vs Time
+        # axes[0].plot(time_log, rw_vel_log, linewidth=1.5)
+        # axes[0].set_xlabel("Time (s)")
+        # axes[0].set_ylabel("Reaction Wheel Velocity (rad/s)")
+        # axes[0].set_title(f"{robot_name} - RW Velocity vs Time (torque cmd={args_cli.rw_torque})")
+        # axes[0].grid(True)
+
+        # # Torque vs Velocity (parametric: each point is one timestep)
+        # axes[1].plot(torque_log, rw_vel_log, "o", markersize=2)
+        # axes[1].set_xlabel("Applied Torque (Nm)")
+        # axes[1].set_ylabel("Reaction Wheel Velocity (rad/s)")
+        # axes[1].set_title(f"{robot_name} - Torque vs RW Velocity")
+        # axes[1].grid(True)
+
+        # plt.tight_layout()
+        # plot_path = f"source/rw_test_{robot_name}.png"
+        # plt.savefig(plot_path, dpi=150)
+        # print(f"Plots saved to {plot_path}")
+        # plt.show()
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as ticker  # Import the ticker module
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        axes = axes.flatten()
+
+        # Define the formatter for 4 decimal places
+        formatter = ticker.FormatStrFormatter('%.2f')
+
+        # Velocity vs Time
+        axes[0].plot(time_log, rw_vel_log, linewidth=1.5)
+        axes[0].set_xlabel("Time (s)")
+        axes[0].set_ylabel("Reaction Wheel Velocity (rad/s)")
+        axes[0].set_title(f"{robot_name} - RW Velocity vs Time (torque cmd={args_cli.rw_torque})")
+        axes[0].grid(True)
+
+        # Apply formatting to both axes of the first subplot
+        # axes[0].xaxis.set_major_formatter(formatter)
+        # axes[0].yaxis.set_major_formatter(formatter)
+
+        # Torque vs Time
+        axes[1].plot(time_log, torque_log, linewidth=1.5, color='orange')
+        axes[1].set_xlabel("Time (s)")
+        axes[1].set_ylabel("Applied Torque (Nm)")
+        axes[1].set_title(f"{robot_name} - Applied Torque vs Time")
+        axes[1].grid(True)
+
+        # Apply formatting to both axes of the second subplot
+        # axes[1].xaxis.set_major_formatter(formatter)
+        axes[1].yaxis.set_major_formatter(formatter)
+
+        # Torque vs Velocity (parametric)
+        axes[2].plot(torque_log, rw_vel_log, "o", markersize=2)
+        axes[2].set_xlabel("Applied Torque (Nm)")
+        axes[2].set_ylabel("Reaction Wheel Velocity (rad/s)")
+        axes[2].set_title(f"{robot_name} - Torque vs RW Velocity")
+        axes[2].grid(True)
+
+        # Apply formatting to both axes of the third subplot
+        axes[2].xaxis.set_major_formatter(formatter)
+        # axes[2].yaxis.set_major_formatter(formatter)
+
+        # Robot angular velocity vs Time
+        axes[3].plot(time_log, robot_ang_vel_log, linewidth=1.5, color="green")
+        axes[3].set_xlabel("Time (s)")
+        axes[3].set_ylabel("Robot Angular Velocity (rad/s)")
+        axes[3].set_title(f"{robot_name} - Robot Angular Velocity vs Time")
+        axes[3].grid(True)
+
+        # Apply formatting to both axes of the fourth subplot
+        # axes[3].xaxis.set_major_formatter(formatter)
+        axes[3].yaxis.set_major_formatter(formatter)
+
+        plt.tight_layout()
+        plot_path = f"source/rw_test_{robot_name}.png"
+        plt.savefig(plot_path, dpi=150)
+        print(f"Plots saved to {plot_path}")
+        # plt.show()
+        
+        # Print final values
+        print(f"Final RW Velocity: {rw_vel_log[-1]:.4f} rad/s")
+        print(f"Final Applied Torque: {torque_log[-1]:.4f} Nm")
+        print(f"Final Robot Angular Velocity: {robot_ang_vel_log[-1]:.4f} rad/s")
+
+    else:
+        # --- Normal teleoperation mode ---
+        print("Teleoperation started. Press 'R' to reset the environment.")
+
+        # simulate environment
+        while simulation_app.is_running():
+            # try:
+                # run everything in inference mode
             with torch.inference_mode():
                 # get device command
-                action = teleop_interface.advance() # [x, y, z, rx, ry, rz, G] G = gripper (+1.0 for open, -1.0 for close) 
-                action[-1] = 0.0
+                action = teleop_interface.advance() # [x, y, z, rx, ry, rz, G] G = gripper (+1.0 for open, -1.0 for close)
+                # action[-1] = 0.0
 
                 action = map_action_to_robot(action, env.robot_cfg.robot_name)
                 # Only apply teleop commands when active
@@ -506,11 +664,11 @@ def main() -> None:
                 if should_reset_recording_instance:
                     env.reset()
                     should_reset_recording_instance = False
-                    
-        except Exception as e:
-            omni.log.error(f"Error during simulation step: {e}")
-            breakpoint()
-            break
+
+            # except Exception as e:
+            #     omni.log.error(f"Error during simulation step: {e}")
+            #     breakpoint()
+            #     break
 
     # close the simulator
     env.close()
