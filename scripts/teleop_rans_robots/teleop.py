@@ -664,12 +664,11 @@ def main() -> None:
                 if should_reset_recording_instance:
                     env.reset()
                     should_reset_recording_instance = False
-                    
-        except Exception as e:
-            breakpoint()
-            omni.log.error(f"Error during simulation step: {e}")
-            breakpoint()
-            break
+
+            # except Exception as e:
+            #     omni.log.error(f"Error during simulation step: {e}")
+            #     breakpoint()
+            #     break
 
     # close the simulator
     env.close()
