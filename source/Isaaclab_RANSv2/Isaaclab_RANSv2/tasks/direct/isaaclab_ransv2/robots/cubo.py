@@ -5,6 +5,7 @@
 
 import torch
 from gymnasium import spaces, vector
+import math
 
 from isaaclab.assets import Articulation
 from isaaclab.markers import ARROW_CFG, VisualizationMarkers
@@ -38,6 +39,11 @@ class CuboRobot(RobotCore):
         self._dim_robot_obs = self._robot_cfg.observation_space
         self._dim_robot_act = self._robot_cfg.action_space
         self._dim_gen_act = self._robot_cfg.gen_space
+        
+        # Physical parameters for reaction wheel dynamics
+        if self._robot_cfg.has_reaction_wheel:
+            self.b = self._robot_cfg.b
+            self.J_rw = self._robot_cfg.J_rw
 
         # Buffers
         self.initialize_buffers()
@@ -52,7 +58,9 @@ class CuboRobot(RobotCore):
             (self._num_envs, self._robot_cfg.num_thrusters, 3), device=self._device, dtype=torch.float32
         )
         if self._robot_cfg.has_reaction_wheel:
-            self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
+            self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32) #torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32) #
+            self._reaction_wheel_to_body_torque_action = torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32)
+            self.omega_reation_wheel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
 
     def run_setup(self, robot: Articulation):
         super().run_setup(robot)
@@ -66,8 +74,8 @@ class CuboRobot(RobotCore):
         super().create_logs()
 
         self.scalar_logger.add_log("robot_state", "AVG/thrusters", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_velocity", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/torque_to_body_from_reaction_wheel", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_internal_velocity", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/action_rate", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
@@ -123,70 +131,10 @@ class CuboRobot(RobotCore):
             rw_reset = torch.zeros((len(env_ids), 1), device=self._device, dtype=torch.float32)
             self._robot.set_joint_velocity_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
             self._robot.set_joint_effort_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
+            self.omega_reation_wheel[env_ids] = 0
+            self._reaction_wheel_to_body_torque_action[env_ids] = 0
 
     def process_actions(self, actions: torch.Tensor):
-        # """Process the actions for the robot.
-
-        # Expects either binary actions: 0 or 1, or continuous actions: [0, 1].
-
-        # - First, clip the actions to the action space limits. This is done to avoid violating the robot's limits.
-        # - Second, apply the action randomizers to the actions. This is done to add noise to the actions, apply
-        #   different scaling factors to the actions, etc.
-        # - Third, format the actions to send to the actuators.
-
-        # Args:
-        #     actions (torch.Tensor): The actions to process."""
-
-        # # Enforce action limits at the robot level
-        # actions = actions.float()  # RuntimeError: result type Float can't be cast to the desired output type long int
-        # actions.clip_(min=0.0, max=1.0)
-        # # Store the unaltered actions, by default the robot should only observe the unaltered actions.
-        # self._previous_unaltered_actions = self._unaltered_actions.clone()
-        # self._unaltered_actions = actions.clone()
-
-        # # Apply action randomizers
-        # for randomizer in self.randomizers:
-        #     randomizer.actions(dt=self.scene.physics_dt, actions=actions)
-
-        # self._previous_actions = self._actions.clone()
-        # self._actions = actions
-
-        # # Calculate the number of active thrusters (those with a value of 1)
-        # n_active_thrusters = torch.sum(actions[:, : self._robot_cfg.num_thrusters], dim=1, keepdim=True)
-        # # Determine thrust scaling factor
-        # if self._robot_cfg.split_thrust:
-        #     # Calculate thrust scale as max thrust divided by the number of active thrusters
-        #     thrust_scale = torch.where(
-        #         n_active_thrusters > 0,
-        #         self._robot_cfg.max_thrust / n_active_thrusters,
-        #         torch.tensor(0.0, device=actions.device),
-        #     )
-        # else:
-        #     thrust_scale = self._robot_cfg.max_thrust
-
-        # # Apply thrust to thrusters, based on whether reaction wheel is present
-        # self._thrust_action[:, :, -1] = actions[:, : self._robot_cfg.num_thrusters].float() * thrust_scale
-        # # transform the 2D thrust actions into 3D forces and torques with x and y components set to zero and z components based on the thrust actions
-        # # self._thrust_action = self._thrust_action.unsqueeze(2).expand(-1, -1, 3)
-        # # self._thrust_action = torch.cat(
-        # #    (torch.zeros_like(self._thrust_action[:, :, :2]), self._thrust_action[:, :, 2:]), dim=2
-        # # )
-
-        # if self._robot_cfg.has_reaction_wheel:
-        #     # Separate continuous control for reaction wheel
-        #     self._reaction_wheel_action = (
-        #         actions[:, self._robot_cfg.num_thrusters :] * self._robot_cfg.reaction_wheel_scale
-        #     )
-        #     self._reaction_wheel_action = self._reaction_wheel_action.unsqueeze(2).expand(-1, -1, 3)
-            
-        # # print("Actions after processing: ", self._actions[:5])
-        # # print("Thrust actions: ", self._thrust_action[:5])
-
-        # # Log data for monitoring
-        # self.scalar_logger.log("robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1))
-        # if self._robot_cfg.has_reaction_wheel:
-        #     self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
-
         """
         Process the actions for the robot. Expects continuous actions in the range [-1, 1]. This operates when the flag `direct_thruster_control` is False. Thrust (body-frame or direct) uses leading dimensions; auxiliary actuators use trailing
         indices (reaction wheel at -1, others at -2, -3, ... if added).
@@ -240,23 +188,32 @@ class CuboRobot(RobotCore):
                 device=self._device,
             )
             self._thrust_action = wp.to_torch(wp_thrust_action)
+        
 
         if self._robot_cfg.has_reaction_wheel:
-            self._reaction_wheel_action = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
+            dt = self.scene.physics_dt * 6.0
+            commanded_torque = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
+            omega_prev = self.omega_reation_wheel.clone()
+            self.omega_reation_wheel = commanded_torque / self.b + (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
+            reaction_torque = -self.b * (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
+            # self._reaction_wheel_action[:, :, 2] = reaction_torque
+            # self._reaction_wheel_to_body_torque_action[:, :, 2] = -reaction_torque
+            self._reaction_wheel_action = reaction_torque
 
         self.scalar_logger.log(
             "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
         )
         if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/reaction_wheel", self._reaction_wheel_action[:, 0])
+            self.scalar_logger.log("robot_state", "AVG/torque_to_body_from_reaction_wheel", self._reaction_wheel_to_body_torque_action[:, 0, 2])
             self.scalar_logger.log(
-                "robot_state", "AVG/reaction_wheel_velocity",
-                self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1),
+                "robot_state", "AVG/reaction_wheel_internal_velocity",
+                self.omega_reation_wheel.squeeze(-1),
             )
+            # self.scalar_logger.log(
+            #     "robot_state", "AVG/reaction_wheel_velocity",
+            #     self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1),
+            # )
 
-        # debug print out the full final action vector sent to the robot
-        # print("Final action vector sent to the robot: ", self._actions)
-        
     def compute_physics(self):
         pass  # Model motor + ackermann steering here
 
@@ -269,14 +226,25 @@ class CuboRobot(RobotCore):
         self._robot.set_external_force_and_torque(
             self._thrust_action, torch.zeros_like(self._thrust_action), body_ids=self._thrusters_dof_idx
         )
+        
+        # Reaction wheel
         if self._robot_cfg.has_reaction_wheel:
+            # Apply the reaction wheel torque as an external torque on the base link (opposite on the wheel joint itself)
+            # self._robot.set_external_force_and_torque(
+            #     torch.zeros_like(self._reaction_wheel_to_body_torque_action),
+            #     self._reaction_wheel_to_body_torque_action,
+            #     body_ids=self._root_idx,
+            # )
             self._robot.set_joint_effort_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
-            # self._robot.set_joint_velocity_target(self._reaction_wheel_action, joint_ids=self._reaction_wheel_dof_idx)
 
     @property
     def reaction_wheel_velocity(self) -> torch.Tensor:
-        """Reaction wheel joint velocity in rad/s. Shape is (num_instances,)."""
-        return self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1)
+        """Reaction wheel joint velocity in rad/s. Shape is (num_instances,).
+        
+        Returns the internally computed velocity from the reaction wheel dynamics model,
+        not the Isaac joint velocity.
+        """
+        return  self.omega_reation_wheel.squeeze(-1) if self._robot_cfg.has_reaction_wheel else torch.zeros(self._num_envs, device=self._device) # TODO: This values doesn't seem acurate: self._robot.data.joint_vel[:, self._reaction_wheel_dof_idx].squeeze(-1)
 
     def set_velocity(
         self,

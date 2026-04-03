@@ -3,7 +3,16 @@
 ```
 docker/container.py start
 docker/container.py enter
+```
+
+Teleop and Reaction wheel characterization
+```
 python scripts/teleop_rans_robots/teleop.py --task=Isaaclab-RANSv2-AutoEnvGen-v0 --num_envs=2
+python scripts/teleop_rans_robots/teleop.py --task Isaaclab-RANSv2-AutoEnvGen-v0 --rw_test --rw_torque 1.0 --rw_duration 10.0 --num_envs 2
+```
+
+Training
+```
 python scripts/rsl_rl/train.py --task=Isaaclab-RANSv2-AutoEnvGen-v0 env.robot_name=Cubo env.task_name=GoToPosition --headless
 ```
 

@@ -77,7 +77,7 @@ ARG ISAACLAB_DEV=true
 # ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-ARG ISAACLAB_COMMIT_SHA="4443bc90ee61c5fde94a33944196600a48dbb132" #IsaacLab v2.2.0 / SpaceR release v0.0.2 RL training assets
+ARG ISAACLAB_COMMIT_SHA="3f02035efc6fe57d340a9a2370a28ec2ba4c2625" #IsaacLab v2.2.0 / SpaceR release v0.0.3 Reation Wheel FP
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
@@ -94,7 +94,7 @@ RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
     ln -sf "${ISAACSIM_ROOT_PATH}" "${ISAACLAB_PATH}/_isaac_sim"; \
     fi
 
-ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/0.0.2-assets/spacer-dreamlab-assets.zip"
+ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/0.0.3-assets/spacer-dreamlab-assets.zip"
 ARG ASSETS_PATH="${ISAACLAB_PATH}/source/isaaclab_assets/data"
 RUN wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}" && \
     unzip -d "${ASSETS_PATH}" /tmp/spacer-dreamlab-assets.zip && \
