@@ -94,7 +94,7 @@ RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
     ln -sf "${ISAACSIM_ROOT_PATH}" "${ISAACLAB_PATH}/_isaac_sim"; \
     fi
 
-ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/0.0.3-assets/spacer-dreamlab-assets.zip"
+ARG ASSETS_URL="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab/releases/download/v0.0.3-Reaction_Wheel_FP/spacer-dreamlab-assets.zip"
 ARG ASSETS_PATH="${ISAACLAB_PATH}/source/isaaclab_assets/data"
 RUN wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}" && \
     unzip -d "${ASSETS_PATH}" /tmp/spacer-dreamlab-assets.zip && \
