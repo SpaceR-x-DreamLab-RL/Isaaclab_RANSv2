@@ -37,6 +37,7 @@ class PinguRobotCfg(RobotCoreCfg):
     left_levionarm_dof_name = ["left_shoulder_joint", "left_elbow_joint"]
     right_levionarm_dof_name = ["right_shoulder_joint", "right_elbow_joint"]
     reaction_wheel_dof_name = ["reaction_wheel_joint"]
+
     root_id_name = "base_link"
     base_joint_dof_name = ["base_joint"]
     if has_reaction_wheel:
