@@ -12,7 +12,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
     max_iterations = 1000
-    save_interval = 1000
+    save_interval = 200
     experiment_name = "AutoEnvGen_PPO"
     logger = "wandb"
     wandb_project = "AutoEnvGen_PPO_Pingu_GoToPose_All_Actuators"
