@@ -73,35 +73,95 @@ class CuboRobot(RobotCore):
     def create_logs(self):
         super().create_logs()
 
-        self.scalar_logger.add_log("robot_state", "AVG/thrusters", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/torque_to_body_from_reaction_wheel", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_internal_velocity", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/action_rate", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_norm", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_body_torque", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_omega", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_action_rate", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_effort", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_saturation", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_usage", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/thruster_action_rate", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/joint_acceleration", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/thruster_effort", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_saturation", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_usage", "mean")
 
     def get_observations(self) -> torch.Tensor:
         return self._unaltered_actions
 
     def compute_rewards(self):
         # TODO: DT should be factored in?
+        
+        """
+        Reward term reference for Cubo
+        --------------------------------
+        All terms are penalties (negative scales) applied on top of the task-level reward.
+        
+        THRUSTERS
+          joint_acceleration    (rew_joint_accel_scale=-2.5e-6)
+              Penalizes the sum of squared joint accelerations across all joints.
+              Discourages high-frequency, jerky motion anywhere in the articulation.
+        
+          thruster_action_rate  (rew_action_rate_scale=-0.12/8, direct mode only)
+              Penalizes the L1 change in thruster commands between consecutive steps.
+              Sliced to thruster dims only so RW does not inflate this term.
+              Encourages smooth, gradual thrust transitions rather than bang-bang control.
+        
+          thruster_effort       (rew_thruster_effort_scale=-0.01)
+              Penalizes the total normalized thrust summed over all 8 thrusters.
+              Captures sustained activation cost that action_rate misses (a robot
+              holding constant thrust pays zero action_rate but non-zero effort).
+        
+        REACTION WHEEL
+          rw_saturation         (rew_reaction_wheel_saturation_scale=-0.1)
+              Penalizes omega_rw^2 (internal reaction wheel angular speed, squared).
+              A saturated wheel cannot produce torque; this keeps speed well below the
+              physical limit so heading authority is always available.
+        
+          rw_usage              (rew_reaction_wheel_usage_scale=-0.05)
+              Penalizes |commanded_torque| — discourages spinning the wheel unnecessarily.
+              Together with rw_saturation: the policy learns to use the wheel only when
+              there is a heading error to correct and to desaturate it afterwards.
+        """
 
         joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
-
-        # TODO: Optionally add a penalty for using thrusters if direct_thruster_control
-        # is True AND use_reaction_wheel is True
-
-        # Log data
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
+        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations * self._robot_cfg.rew_joint_accel_scale)
 
         reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
         if self._robot_cfg.direct_thruster_control:
-            action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
-            self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
-            self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
-            reward = reward + action_rate * self._robot_cfg.rew_action_rate_scale
+            # Slice only thruster dims so RW changes don't pollute this term
+            thruster_action_rate = torch.sum(
+                torch.abs(
+                    self._unaltered_actions[:, : self._robot_cfg.num_thrusters]
+                    - self._previous_unaltered_actions[:, : self._robot_cfg.num_thrusters]
+                ),
+                dim=1,
+            )
+            self.scalar_logger.log("robot_state", "AVG/thruster_action_rate", thruster_action_rate)
+            self.scalar_logger.log("robot_reward", "AVG/thruster_action_rate", thruster_action_rate * self._robot_cfg.rew_action_rate_scale)
+            reward = reward + thruster_action_rate * self._robot_cfg.rew_action_rate_scale
+
+        # --- Thruster effort: penalize sustained total thrust (fuel cost) ---
+        thruster_effort = torch.sum(torch.abs(self._thrust_action[:, :, 2]), dim=-1) / self._robot_cfg.max_thrust
+        self.scalar_logger.log("robot_state", "AVG/thruster_effort", thruster_effort)
+        self.scalar_logger.log("robot_reward", "AVG/thruster_effort", thruster_effort * self._robot_cfg.rew_thruster_effort_scale)
+        reward = reward + thruster_effort * self._robot_cfg.rew_thruster_effort_scale
+
+        if self._robot_cfg.has_reaction_wheel:
+            # --- RW saturation: penalize high internal wheel speed (quadratic) ---
+            rw_saturation = torch.square(self.omega_reation_wheel).squeeze(-1)
+            self.scalar_logger.log("robot_state", "AVG/rw_saturation", rw_saturation)
+            self.scalar_logger.log("robot_reward", "AVG/rw_saturation", rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale)
+            reward = reward + rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale
+
+            # --- RW usage: penalize commanded torque magnitude ---
+            rw_usage = torch.abs(self._reaction_wheel_action).squeeze(-1)
+            self.scalar_logger.log("robot_state", "AVG/rw_usage", rw_usage)
+            self.scalar_logger.log("robot_reward", "AVG/rw_usage", rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale)
+            reward = reward + rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale
+
         return reward
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -201,12 +261,12 @@ class CuboRobot(RobotCore):
             self._reaction_wheel_action = reaction_torque
 
         self.scalar_logger.log(
-            "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
+            "robot_state", "AVG/thruster_norm", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
         )
         if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/torque_to_body_from_reaction_wheel", self._reaction_wheel_to_body_torque_action[:, 0, 2])
+            self.scalar_logger.log("robot_state", "AVG/rw_body_torque", self._reaction_wheel_to_body_torque_action[:, 0, 2])
             self.scalar_logger.log(
-                "robot_state", "AVG/reaction_wheel_internal_velocity",
+                "robot_state", "AVG/rw_omega",
                 self.omega_reation_wheel.squeeze(-1),
             )
             # self.scalar_logger.log(

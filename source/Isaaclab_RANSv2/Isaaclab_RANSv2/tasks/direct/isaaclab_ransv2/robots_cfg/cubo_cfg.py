@@ -43,6 +43,9 @@ class CuboRobotCfg(RobotCoreCfg):
 
     rew_action_rate_scale = -0.12 / 8
     rew_joint_accel_scale = -2.5e-6
+    rew_thruster_effort_scale = -0.01
+    rew_reaction_wheel_saturation_scale = -2.5e-6
+    rew_reaction_wheel_usage_scale = -0.05
 
     max_thrust = 1.0
     """Maximum thrust of the thrusters in Newtons"""

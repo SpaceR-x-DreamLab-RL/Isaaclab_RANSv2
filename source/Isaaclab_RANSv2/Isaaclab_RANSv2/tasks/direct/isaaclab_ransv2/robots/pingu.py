@@ -112,6 +112,7 @@ class PinguRobot(RobotCore):
             self.omega_reation_wheel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
 
         self.arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
+        self._previous_arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
 
     def run_setup(self, robot: Articulation):
         super().run_setup(robot)
@@ -142,32 +143,129 @@ class PinguRobot(RobotCore):
     def create_logs(self):
         super().create_logs()
 
-        self.scalar_logger.add_log("robot_state", "AVG/thrusters", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/torque_to_body_from_reaction_wheel", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/reaction_wheel_internal_velocity", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/action_rate", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_norm", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_body_torque", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_omega", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_action_rate", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/action_rate", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/thruster_effort", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_saturation", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_usage", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/arm_action_rate", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/arm_symmetry", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/thruster_action_rate", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/joint_acceleration", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/thruster_effort", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_saturation", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_usage", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/arm_action_rate", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/arm_symmetry", "mean")
 
     def get_observations(self) -> torch.Tensor:
         return self._unaltered_actions
 
     def compute_rewards(self):
-        # TODO: DT should be factored in?
+        #TODO: Should dt be fatored in?
+        
+        """
+        Reward term reference for Pingu
+        --------------------------------
+        All terms are penalties (negative scales) applied on top of the task-level reward.
+        
+        THRUSTERS
+          joint_acceleration    (rew_joint_accel_scale=-2.5e-6)
+              Penalizes the sum of squared joint accelerations across all joints.
+              Discourages high-frequency, jerky motion anywhere in the articulation.
+        
+          thruster_action_rate  (rew_action_rate_scale=-0.12/8, direct mode only)
+              Penalizes the L1 change in thruster commands between consecutive steps.
+              Sliced to thruster dims only so arms and RW do not inflate this term.
+              Encourages smooth, gradual thrust transitions rather than bang-bang control.
+        
+          thruster_effort       (rew_thruster_effort_scale=-0.05)
+              Penalizes the total normalized thrust summed over all 8 thrusters.
+              Captures sustained activation cost that action_rate misses (a robot
+              holding constant thrust pays zero action_rate but non-zero effort).
+        
+        REACTION WHEEL
+          rw_saturation         (rew_reaction_wheel_saturation_scale=-2.5e-6)
+              Penalizes omega_rw^2 (internal reaction wheel angular speed, squared).
+              A saturated wheel cannot produce torque; this keeps speed well below the
+              physical limit so heading authority is always available.
+        
+          rw_usage              (rew_reaction_wheel_usage_scale=-0.05)
+              Penalizes |commanded_torque| — discourages spinning the wheel unnecessarily.
+              Together with rw_saturation: the policy learns to use the wheel only when
+              there is a heading error to correct and to desaturate it afterwards.
+        
+        ARMS
+          arm_action_rate       (rew_arm_action_rate_scale=-0.1)
+              Penalizes the L1 change in arm position targets (all 4 joints) per step.
+              Rapid arm movements cause body vibrations on a floating platform; this
+              encourages smooth, deliberate arm trajectories.
+        
+          arm_symmetry          (rew_arm_symmetry_scale=-0.05)
+              Penalizes (left_shoulder - right_shoulder)^2 + (left_elbow - right_elbow)^2.
+              Persistent left/right asymmetry creates a constant angular momentum bias
+              that the thrusters or reaction wheel must continuously compensate for.
+              This nudges the policy toward symmetric resting poses.
+              
+        """
+
 
         joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
-
-        # Log data
         self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations)
+        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations * self._robot_cfg.rew_joint_accel_scale)
 
         reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
         if self._robot_cfg.direct_thruster_control:
-            action_rate = torch.sum(torch.abs(self._unaltered_actions - self._previous_unaltered_actions), dim=1)
-            self.scalar_logger.log("robot_state", "AVG/action_rate", action_rate)
-            self.scalar_logger.log("robot_reward", "AVG/action_rate", action_rate)
-            reward = reward + action_rate * self._robot_cfg.rew_action_rate_scale
+            # Slice only thruster dims so arm/RW changes don't pollute this term
+            thruster_action_rate = torch.sum(
+                torch.abs(
+                    self._unaltered_actions[:, : self._robot_cfg.num_thrusters]
+                    - self._previous_unaltered_actions[:, : self._robot_cfg.num_thrusters]
+                ),
+                dim=1,
+            )
+            self.scalar_logger.log("robot_state", "AVG/thruster_action_rate", thruster_action_rate)
+            self.scalar_logger.log("robot_reward", "AVG/thruster_action_rate", thruster_action_rate * self._robot_cfg.rew_action_rate_scale)
+            reward = reward + thruster_action_rate * self._robot_cfg.rew_action_rate_scale
+
+        # --- Thruster effort: penalize sustained total thrust (fuel cost) ---
+        thruster_effort = torch.sum(torch.abs(self._thrust_action[:, :, 2]), dim=-1) / self._robot_cfg.max_thrust
+        self.scalar_logger.log("robot_state", "AVG/thruster_effort", thruster_effort)
+        self.scalar_logger.log("robot_reward", "AVG/thruster_effort", thruster_effort * self._robot_cfg.rew_thruster_effort_scale)
+        reward = reward + thruster_effort * self._robot_cfg.rew_thruster_effort_scale
+
+        if self._robot_cfg.has_reaction_wheel:
+            # --- RW saturation: penalize high internal wheel speed (quadratic) ---
+            rw_saturation = torch.square(self.omega_reation_wheel).squeeze(-1)
+            self.scalar_logger.log("robot_state", "AVG/rw_saturation", rw_saturation)
+            self.scalar_logger.log("robot_reward", "AVG/rw_saturation", rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale)
+            reward = reward + rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale
+
+            # --- RW usage: penalize commanded torque magnitude ---
+            rw_usage = torch.abs(self._reaction_wheel_action).squeeze(-1)
+            self.scalar_logger.log("robot_state", "AVG/rw_usage", rw_usage)
+            self.scalar_logger.log("robot_reward", "AVG/rw_usage", rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale)
+            reward = reward + rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale
+
+        # --- Arm action rate: penalize rapid arm target changes (vibration/jerk) ---
+        arm_action_rate = torch.sum(torch.abs(self.arm_position_targets - self._previous_arm_position_targets), dim=-1)
+        self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
+        self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
+        reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
+
+        # --- Arm symmetry: penalize left/right asymmetry (floating platform angular momentum bias) ---
+        # arm_position_targets: [left_shoulder, left_elbow, right_shoulder, right_elbow]
+        # arm_symmetry = (
+        #     torch.square(self.arm_position_targets[:, 0] - self.arm_position_targets[:, 2])
+        #     + torch.square(self.arm_position_targets[:, 1] - self.arm_position_targets[:, 3])
+        # )
+        # self.scalar_logger.log("robot_state", "AVG/arm_symmetry", arm_symmetry)
+        # self.scalar_logger.log("robot_reward", "AVG/arm_symmetry", arm_symmetry * self._robot_cfg.rew_arm_symmetry_scale)
+        # reward = reward + arm_symmetry * self._robot_cfg.rew_arm_symmetry_scale
+
         return reward
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -183,6 +281,7 @@ class PinguRobot(RobotCore):
     ):
         super().reset(env_ids, gen_actions, env_seeds)
         self._previous_actions[env_ids] = 0
+        self._previous_arm_position_targets[env_ids] = 0
 
     def set_initial_conditions(self, env_ids: torch.Tensor):
         # thrust_reset = torch.zeros_like(self._thrust_action)
@@ -221,6 +320,33 @@ class PinguRobot(RobotCore):
         - actions[:, thrust_start+0:thrust_start+2]: Left Arm joints (shoulder, elbow).
         - actions[:, thrust_start+2:thrust_start+4]: Right Arm joints (shoulder, elbow).
         - actions[:, -1]: Reaction wheel speed control.
+
+        Logged robot_state terms (all logged here unless noted):
+        - AVG/thruster_norm:         L2 norm of the 8 thruster force magnitudes [N]. Reflects overall
+                                     thrust intensity; high values mean the robot is pushing hard.
+        - AVG/rw_body_torque:        Z-torque transferred to the body from the reaction wheel [N·m].
+                                     The equal-and-opposite reaction of the wheel's angular acceleration.
+        - AVG/rw_omega:              Internal reaction wheel angular velocity [rad/s] from the dynamics
+                                     model (not the Isaac joint sensor). Tracks saturation risk.
+        - AVG/thruster_action_rate:  L1 change in thruster commands (direct mode only) across the
+                                     num_thrusters dims only. High values = bang-bang switching.
+                                     (logged in compute_rewards)
+        - AVG/thruster_effort:       Sum of all 8 normalized thrust forces [0, 1]. Captures sustained
+                                     activation cost independent of how fast commands change.
+                                     (logged in compute_rewards)
+        - AVG/joint_acceleration:    Sum of squared accelerations across all articulation joints.
+                                     Proxy for mechanical stress and vibration.
+                                     (logged in compute_rewards)
+        - AVG/rw_saturation:         omega_rw^2. Grows sharply as the wheel approaches its speed limit.
+                                     (logged in compute_rewards)
+        - AVG/rw_usage:              |commanded_torque| to the reaction wheel. Non-zero even when the
+                                     wheel is not saturating; shows how actively it is being driven.
+                                     (logged in compute_rewards)
+        - AVG/arm_action_rate:       L1 change in arm position targets (all 4 joints) per step.
+                                     (logged in compute_rewards)
+        - AVG/arm_symmetry:          (left_shoulder - right_shoulder)^2 + (left_elbow - right_elbow)^2.
+                                     Zero when both arms are mirrored; grows with asymmetric poses.
+                                     (logged in compute_rewards)
 
         Args:
             actions (torch.Tensor): The actions to process.
@@ -264,6 +390,7 @@ class PinguRobot(RobotCore):
             
         # Arms control: absolute position, actions in [-1, 1] mapped to [lower_limit, upper_limit]
         # target = lower + (action * 0.5 + 0.5) * (upper - lower)
+        self._previous_arm_position_targets = self.arm_position_targets.clone()
         alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
         self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
         self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
@@ -281,12 +408,12 @@ class PinguRobot(RobotCore):
             self._reaction_wheel_action = reaction_torque
 
         self.scalar_logger.log(
-            "robot_state", "AVG/thrusters", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
+            "robot_state", "AVG/thruster_norm", torch.linalg.norm(self._thrust_action[:, :, 2], dim=-1)
         )
         if self._robot_cfg.has_reaction_wheel:
-            self.scalar_logger.log("robot_state", "AVG/torque_to_body_from_reaction_wheel", self._reaction_wheel_to_body_torque_action[:, 0, 2])
+            self.scalar_logger.log("robot_state", "AVG/rw_body_torque", self._reaction_wheel_to_body_torque_action[:, 0, 2])
             self.scalar_logger.log(
-                "robot_state", "AVG/reaction_wheel_internal_velocity",
+                "robot_state", "AVG/rw_omega",
                 self.omega_reation_wheel.squeeze(-1),
             )
             # self.scalar_logger.log(

@@ -8,7 +8,7 @@ from isaaclab.utils import configclass
 class AutoEnvGenCfg(DirectRLEnvCfg):
     # env
     decimation = 6
-    episode_length_s = 60.0
+    episode_length_s = 40.0
 
     robot_name = "Cubo"
     task_name = "GoToPose"
