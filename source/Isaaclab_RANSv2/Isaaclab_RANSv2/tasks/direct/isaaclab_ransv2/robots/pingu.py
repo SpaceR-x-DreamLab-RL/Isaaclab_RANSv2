@@ -25,6 +25,11 @@ from ..utils import compute_thruster_mapping
 
 class PinguRobot(RobotCore):
 
+    # Arm swing FSM: duration range (seconds) for every state (hold and swing).
+    # Increase both values to make the swing slower overall.
+    SWING_DUR_MIN: float = 0.5
+    SWING_DUR_MAX: float = 5.0
+
     def __init__(
         self,
         scene: InteractiveScene | None = None,
@@ -124,13 +129,10 @@ class PinguRobot(RobotCore):
         # Initialize swing state buffers
         # 0: Hold Right, 1: Swing to Left, 2: Hold Left, 3: Swing to Right
         self._swing_state = torch.zeros(self._num_envs, device=self._device, dtype=torch.int32)
-        self._swing_timer = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
+        self._swing_timer = self._rng.sample_uniform_torch(0.0, 2.0, 1, ids=self._env_ids)  # Initial random wait
         self._swing_start_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
         self._swing_target_angle = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
         self._swing_duration = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
-        
-        # Initialize random timer
-        self._swing_timer[:] = torch.rand(self._num_envs, device=self._device) * 2.0  # Initial random wait
 
     def run_setup(self, robot: Articulation):
         super().run_setup(robot)
@@ -272,10 +274,10 @@ class PinguRobot(RobotCore):
             reward = reward + rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale
 
         # --- Arm action rate: penalize rapid arm target changes (vibration/jerk) ---
-        arm_action_rate = torch.sum(torch.abs(self.arm_position_targets - self._previous_arm_position_targets), dim=-1)
-        self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
-        self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
-        reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
+        # arm_action_rate = torch.sum(torch.abs(self.arm_position_targets - self._previous_arm_position_targets), dim=-1)
+        # self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
+        # self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
+        # reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
 
         # --- Arm collision: penalize any contact on the arm links ---
         # net_forces_w has shape (num_envs, num_bodies, 3). Take the max over bodies
@@ -319,12 +321,28 @@ class PinguRobot(RobotCore):
         self._previous_actions[env_ids] = 0
         self._previous_arm_position_targets[env_ids] = 0
         
-        # Reset swing state
-        self._swing_state[env_ids] = 0
-        self._swing_timer[env_ids] = torch.rand(len(env_ids), device=self._device) * 2.0 # Random wait up to 2s
-        self._swing_start_angle[env_ids] = -0.8
+        # Reset swing FSM with randomized initial state to desynchronize environments.
+        n = len(env_ids)
+        rand_state    = self._rng.sample_integer_torch(0, 4, 1, ids=env_ids)  # [0, 4]
+        rand_duration = self._rng.sample_uniform_torch(self.SWING_DUR_MIN, self.SWING_DUR_MAX, 1, ids=env_ids)
+        rand_timer    = self._rng.sample_uniform_torch(0.0, 1.0, 1, ids=env_ids) * rand_duration  # random phase
+
+        self._swing_state[env_ids]    = rand_state
+        self._swing_timer[env_ids]    = rand_timer
+        self._swing_duration[env_ids] = rand_duration
+
+        # Default start/target for states 0 (Hold Right) and 1 (Swing → Left)
+        self._swing_start_angle[env_ids]  = 0.8
         self._swing_target_angle[env_ids] = -0.8
-        self._swing_duration[env_ids] = 1.0
+        # Override for states 2 (Hold Left) and 3 (Swing → Right)
+        left_ids  = env_ids[rand_state == 2]
+        right_ids = env_ids[rand_state == 3]
+        if len(left_ids):
+            self._swing_start_angle[left_ids]  = -0.8
+            self._swing_target_angle[left_ids] = -0.8
+        if len(right_ids):
+            self._swing_start_angle[right_ids]  = -0.8
+            self._swing_target_angle[right_ids] = 0.8
 
     def set_initial_conditions(self, env_ids: torch.Tensor):
         # thrust_reset = torch.zeros_like(self._thrust_action)
@@ -434,14 +452,9 @@ class PinguRobot(RobotCore):
             )
             self._thrust_action = wp.to_torch(wp_thrust_action)
             
-        # Arms control: absolute position, actions in [-1, 1] mapped to [lower_limit, upper_limit]
-        # target = lower + (action * 0.5 + 0.5) * (upper - lower)
+        # Arms are driven by the autonomous swing FSM (not policy actions).
+        # Snapshot current targets for arm_action_rate reward logging.
         self._previous_arm_position_targets = self.arm_position_targets.clone()
-        alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
-        self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
-        self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
-        self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
-        self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
 
         if self._robot_cfg.has_reaction_wheel:
             dt = self.scene.physics_dt * 6.0
@@ -470,6 +483,82 @@ class PinguRobot(RobotCore):
     def compute_physics(self):
         pass
 
+    def _update_swing_fsm(self, dt: float):
+        """Advance the 4-state shoulder-swing FSM and update arm_position_targets.
+
+        States:
+            0 — Hold Right  (+0.8 rad, hold duration)
+            1 — Swing Left  (cosine-interpolate +0.8 → -0.8)
+            2 — Hold Left   (-0.8 rad, hold duration)
+            3 — Swing Right (cosine-interpolate -0.8 → +0.8)
+
+        Each state duration is sampled uniformly from [0.1, 0.3] s on entry.
+        Both shoulder joints receive the same angle; elbows are held at 0.
+        """
+        ANGLE_RIGHT =  0.8
+        ANGLE_LEFT  = -0.8
+
+        self._swing_timer += dt
+
+        # --- Compute current shoulder angle via cosine interpolation ---
+        safe_dur = self._swing_duration.clamp(min=1e-6)
+        t        = (self._swing_timer / safe_dur).clamp(0.0, 1.0)
+        cos_a    = (1.0 - torch.cos(math.pi * t)) * 0.5  # smooth [0, 1]
+
+        state = self._swing_state
+        shoulder = torch.where(
+            (state == 0),
+            torch.full_like(t, ANGLE_RIGHT),
+            torch.where(
+                (state == 2),
+                torch.full_like(t, ANGLE_LEFT),
+                # swing states: interpolate start → target
+                self._swing_start_angle + cos_a * (self._swing_target_angle - self._swing_start_angle),
+            ),
+        )
+
+        self.arm_position_targets[:, 0] = shoulder   # left shoulder
+        self.arm_position_targets[:, 1] = 0.0        # left elbow
+        self.arm_position_targets[:, 2] = shoulder   # right shoulder
+        self.arm_position_targets[:, 3] = 0.0        # right elbow
+
+        # --- State transitions (snapshot state before any mutation) ---
+        expired       = self._swing_timer >= self._swing_duration
+        current_state = state.clone()
+        new_dur = self._rng.sample_uniform_torch(self.SWING_DUR_MIN, self.SWING_DUR_MAX, 1, ids=self._env_ids)
+
+        # 0 → 1: Hold Right → Swing Left
+        m = expired & (current_state == 0)
+        if m.any():
+            self._swing_state[m]        = 1
+            self._swing_timer[m]        = 0.0
+            self._swing_start_angle[m]  = ANGLE_RIGHT
+            self._swing_target_angle[m] = ANGLE_LEFT
+            self._swing_duration[m]     = new_dur[m]
+
+        # 1 → 2: Swing Left → Hold Left
+        m = expired & (current_state == 1)
+        if m.any():
+            self._swing_state[m]    = 2
+            self._swing_timer[m]    = 0.0
+            self._swing_duration[m] = new_dur[m]
+
+        # 2 → 3: Hold Left → Swing Right
+        m = expired & (current_state == 2)
+        if m.any():
+            self._swing_state[m]        = 3
+            self._swing_timer[m]        = 0.0
+            self._swing_start_angle[m]  = ANGLE_LEFT
+            self._swing_target_angle[m] = ANGLE_RIGHT
+            self._swing_duration[m]     = new_dur[m]
+
+        # 3 → 0: Swing Right → Hold Right
+        m = expired & (current_state == 3)
+        if m.any():
+            self._swing_state[m]    = 0
+            self._swing_timer[m]    = 0.0
+            self._swing_duration[m] = new_dur[m]
+
     def apply_actions(self):
         # Compute the physics
         super().apply_actions()
@@ -481,7 +570,8 @@ class PinguRobot(RobotCore):
             self._thrust_action, torch.zeros_like(self._thrust_action), body_ids=self._thrusters_dof_idx
         )
 
-        # Arms position control        
+        # Arms: advance autonomous swing FSM and apply resulting position targets
+        self._update_swing_fsm(self.scene.physics_dt)
         self._robot.set_joint_position_target(self.arm_position_targets, joint_ids=self._arms_ids)
         """
         # Effort control
