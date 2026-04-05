@@ -82,17 +82,25 @@ class EvalMetrics:
         for i in range(cutoff_indices.shape[0]):
             max_cutoff = int(torch.max(cutoff_indices[i]).item())
             for k, v in trajectories.items():
-                v[i][max_cutoff + 1:] = 0
+                # Zero from the done step onwards: step max_cutoff has post-reset
+                # data, so valid steps are [0, max_cutoff).
+                v[i][max_cutoff:] = 0
         
-        trajectories_masks = torch.zeros(cutoff_indices.shape[0], int(torch.max(cutoff_indices).item()), dtype=torch.bool, device=self.device)
-        # Use the last (max) cutoff index per environment to determine valid steps
+        # Mask must span the full trajectory length so it can be broadcast against
+        # trajectories tensors (shape: num_envs × total_steps).
+        # Use strict < (not <=) to EXCLUDE the done step: when done fires at step T,
+        # IsaacLab has already reset the env so eval_data at step T is the post-reset
+        # state (large distance). The last valid observation is T-1.
+        total_steps = data['dones'].shape[0]
         max_cutoff_indices = torch.max(cutoff_indices, dim=1).values
-        trajectories_mask = torch.arange(trajectories_masks.shape[-1], device=self.device).unsqueeze(0) <= max_cutoff_indices.unsqueeze(1)
+        trajectories_mask = torch.arange(total_steps, device=self.device).unsqueeze(0) < max_cutoff_indices.unsqueeze(1)
         
         # Store these as instance variables so the saver can access them
-        self.extracted_trajectories = trajectories 
-        # Take only the first column if cutoff_indices is (N, runs), 
-        # or handle accordingly to get a 1D tensor of lengths
+        self.extracted_trajectories = trajectories
+        # Keep the full (num_envs, num_runs) cutoff table so the saver can
+        # extract every run segment, not just the first one per env.
+        self.cutoff_indices = cutoff_indices
+        # last_true_index kept for backwards-compat with metric classes that use it
         self.last_true_index = cutoff_indices[:, 0] if cutoff_indices.ndim > 1 else cutoff_indices
         
         print("[INFO] Evaluating metrics...")
@@ -131,8 +139,9 @@ class EvalMetrics:
 
     def save_extracted_trajectories_to_csv(self, max_workers=32):
         """
-        Saves all extracted trajectories to a CSV. 
-        Uses cutoff_indices to slice away padded zeros.
+        Saves all extracted trajectories to a CSV.
+        Iterates over every (env_idx, run_idx) pair so that num_runs_per_env
+        trajectories are saved per environment (e.g. 8 envs × 4 runs = 32 rows).
         """
         save_path = os.path.join(self.save_path, "metrics", f"detailed_trajectories_{self.task_name}.csv")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -143,27 +152,28 @@ class EvalMetrics:
 
         keys = list(self.extracted_trajectories.keys())
         dim_names = ['x', 'y', 'z']
-        
-        # Save all environments/trajectories
-        num_trajectories = self.last_true_index.shape[0]
 
-        def _process_one(traj_idx):
-            # Determine actual length for this trajectory to avoid saving zeros
-            actual_len = self.last_true_index[traj_idx].item()
-            if actual_len == 0:
+        num_envs = self.cutoff_indices.shape[0]
+        num_runs = self.cutoff_indices.shape[1]
+
+        def _process_one(env_idx, run_idx):
+            end_step = self.cutoff_indices[env_idx, run_idx].item()
+            # 0 means this run slot was never filled (env didn't complete enough runs)
+            if end_step == 0:
+                return None
+            start_step = 0 if run_idx == 0 else (self.cutoff_indices[env_idx, run_idx - 1].item() + 1)
+            actual_len = end_step - start_step
+            if actual_len <= 0:
                 return None
 
-            traj_idxs = np.full(actual_len, traj_idx, dtype=int)
+            traj_id = env_idx * num_runs + run_idx
+            traj_idxs = np.full(actual_len, traj_id, dtype=int)
             step_idxs = np.arange(actual_len, dtype=int)
             data_cols = {}
 
             for key in keys:
-                # Slice the tensor up to the actual length BEFORE converting to numpy
-                # This is much faster and saves memory
-                tensor = self.extracted_trajectories[key][traj_idx, :actual_len]
+                tensor = self.extracted_trajectories[key][env_idx, start_step:end_step]
                 arr = tensor.cpu().numpy() if hasattr(tensor, 'cpu') else np.array(tensor)
-
-                # Standardize shape to 2D (Steps, Dimensions)
                 if arr.ndim == 1:
                     data_cols[key] = arr.reshape(-1, 1)
                 else:
@@ -171,10 +181,14 @@ class EvalMetrics:
 
             return traj_idxs, step_idxs, data_cols
 
-        # Parallel Execution
+        # Parallel execution over all (env, run) pairs
         results = []
         with ThreadPoolExecutor(max_workers=max_workers) as exe:
-            futures = [exe.submit(_process_one, i) for i in range(num_trajectories)]
+            futures = [
+                exe.submit(_process_one, env_idx, run_idx)
+                for env_idx in range(num_envs)
+                for run_idx in range(num_runs)
+            ]
             for fut in as_completed(futures):
                 res = fut.result()
                 if res is not None:
@@ -183,30 +197,24 @@ class EvalMetrics:
         if not results:
             return
 
-        # Prepare Final Data Dictionary
         final_data = {
             'trajectory_id': np.concatenate([r[0] for r in results]),
             'step': np.concatenate([r[1] for r in results])
         }
 
-        # Process each key into named columns
         for key in keys:
-            # Concatenate all trajectory segments for this key
             combined_arr = np.concatenate([r[2][key] for r in results], axis=0)
             cols = combined_arr.shape[1]
-
             if cols == 1:
                 final_data[key] = combined_arr.flatten()
             else:
-                # Name columns (x, y, z) if 3 or less, else use numbers
                 labels = dim_names[:cols] if cols <= 3 else [str(i) for i in range(cols)]
                 for d in range(cols):
                     final_data[f"{key}_{labels[d]}"] = combined_arr[:, d]
 
-        # Write to File
         df = pd.DataFrame(final_data)
         df.to_csv(save_path, index=False, float_format='%.4f')
-        print(f"[INFO] Detailed trajectories saved to {save_path}")
+        print(f"[INFO] Detailed trajectories saved to {save_path} ({len(results)}/{num_envs * num_runs} trajectories)")
 
     # def calculate_metrics(self, data: dict)->None:
 

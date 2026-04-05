@@ -57,6 +57,8 @@ class PinguRobot(RobotCore):
             "linear_velocity",
             "angular_velocity",
             "reaction_wheel_action",
+            "omega_reaction_wheel",
+            "thrust_action",
             "actions",
             "unaltered_actions",
             "left_arm_position",
@@ -64,15 +66,18 @@ class PinguRobot(RobotCore):
             "left_arm_velocity",
             "right_arm_velocity",
         ]
-    
+
     @property
     def eval_data_specs(self)->dict[str, list[str]]:
+        num_thrusters = self._robot_cfg.num_thrusters
         return {
             "position": [".robot_pos.x.m", ".robot_pos.y.m", ".robot_pos.z.m"],
             "heading": [".robot_heading.rad"],
             "linear_velocity": [".robot_lin_vel.x.m/s", ".robot_lin_vel.y.m/s", ".robot_lin_vel.z.m/s"],
             "angular_velocity": [".robot_ang_vel.x.rad/s", ".robot_ang_vel.y.rad/s", ".robot_ang_vel.z.rad/s"],
             "reaction_wheel_action": [".reaction_wheel_action.u"],
+            "omega_reaction_wheel": [".omega_reaction_wheel.rad/s"],
+            "thrust_action": [f".thruster{i}.force.N" for i in range(num_thrusters)],
             "actions": [f".robot_actions{i}.u" for i in range(self._robot_cfg.action_space)],
             "unaltered_actions": [f".robot_unaltered_actions{i}.u" for i in range(self._robot_cfg.action_space)],
             "left_arm_position": [".left_shoulder.pos.rad", ".left_elbow.pos.rad"],
@@ -80,7 +85,7 @@ class PinguRobot(RobotCore):
             "left_arm_velocity": [".left_shoulder.vel.rad/s", ".left_elbow.vel.rad/s"],
             "right_arm_velocity": [".right_shoulder.vel.rad/s", ".right_elbow.vel.rad/s"],
         }
-    
+
     @property
     def eval_data(self) -> dict:
         return {
@@ -89,6 +94,8 @@ class PinguRobot(RobotCore):
             "linear_velocity": self.root_lin_vel_b,
             "angular_velocity": self.root_ang_vel_b,
             "reaction_wheel_action": self._reaction_wheel_action,
+            "omega_reaction_wheel": self.omega_reaction_wheel,
+            "thrust_action": self._thrust_action[..., -1],
             "actions": self._actions,
             "unaltered_actions": self._unaltered_actions,
             "left_arm_position": self._robot.data.joint_pos[:, self._left_levionarm_dof_idx],
@@ -109,7 +116,7 @@ class PinguRobot(RobotCore):
         if self._robot_cfg.has_reaction_wheel:
             self._reaction_wheel_action = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32) #torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32) #
             self._reaction_wheel_to_body_torque_action = torch.zeros((self._num_envs, 1, 3), device=self._device, dtype=torch.float32)
-            self.omega_reation_wheel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
+            self.omega_reaction_wheel = torch.zeros((self._num_envs, 1), device=self._device, dtype=torch.float32)
 
         self.arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self._previous_arm_position_targets = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
@@ -162,7 +169,7 @@ class PinguRobot(RobotCore):
         self.scalar_logger.add_log("robot_reward", "AVG/arm_symmetry", "mean")
 
     def get_observations(self) -> torch.Tensor:
-        return self._unaltered_actions
+        return self._previous_actions
 
     def compute_rewards(self):
         #TODO: Should dt be fatored in?
@@ -239,7 +246,7 @@ class PinguRobot(RobotCore):
 
         if self._robot_cfg.has_reaction_wheel:
             # --- RW saturation: penalize high internal wheel speed (quadratic) ---
-            rw_saturation = torch.square(self.omega_reation_wheel).squeeze(-1)
+            rw_saturation = torch.square(self.omega_reaction_wheel).squeeze(-1)
             self.scalar_logger.log("robot_state", "AVG/rw_saturation", rw_saturation)
             self.scalar_logger.log("robot_reward", "AVG/rw_saturation", rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale)
             reward = reward + rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale
@@ -301,7 +308,7 @@ class PinguRobot(RobotCore):
             rw_reset = torch.zeros((len(env_ids), 1), device=self._device, dtype=torch.float32)
             self._robot.set_joint_velocity_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
             self._robot.set_joint_effort_target(rw_reset, joint_ids=self._reaction_wheel_dof_idx, env_ids=env_ids)
-            self.omega_reation_wheel[env_ids] = 0
+            self.omega_reaction_wheel[env_ids] = 0
             self._reaction_wheel_to_body_torque_action[env_ids] = 0
 
 
@@ -360,6 +367,9 @@ class PinguRobot(RobotCore):
         # Apply action randomizers
         for randomizer in self.randomizers:
             randomizer.actions(dt=self.scene.physics_dt, actions=actions)
+            
+        # Clip the actions between [-1, 1] to ensure they are within the expected range.
+        actions = torch.clamp(actions, -1.0, 1.0)
 
         self._previous_actions = self._actions.clone()
         self._actions = actions
@@ -400,8 +410,8 @@ class PinguRobot(RobotCore):
         if self._robot_cfg.has_reaction_wheel:
             dt = self.scene.physics_dt * 6.0
             commanded_torque = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
-            omega_prev = self.omega_reation_wheel.clone()
-            self.omega_reation_wheel = commanded_torque / self.b + (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
+            omega_prev = self.omega_reaction_wheel.clone()
+            self.omega_reaction_wheel = commanded_torque / self.b + (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
             reaction_torque = -self.b * (omega_prev - commanded_torque / self.b) * math.exp(-self.b * dt / self.J_rw)
             # self._reaction_wheel_action[:, :, 2] = reaction_torque
             # self._reaction_wheel_to_body_torque_action[:, :, 2] = -reaction_torque
@@ -414,7 +424,7 @@ class PinguRobot(RobotCore):
             self.scalar_logger.log("robot_state", "AVG/rw_body_torque", self._reaction_wheel_to_body_torque_action[:, 0, 2])
             self.scalar_logger.log(
                 "robot_state", "AVG/rw_omega",
-                self.omega_reation_wheel.squeeze(-1),
+                self.omega_reaction_wheel.squeeze(-1),
             )
             # self.scalar_logger.log(
             #     "robot_state", "AVG/reaction_wheel_velocity",
@@ -470,7 +480,7 @@ class PinguRobot(RobotCore):
         Returns the internally computed velocity from the reaction wheel dynamics model,
         not the Isaac joint velocity.
         """
-        return self.omega_reation_wheel.squeeze(-1) if self._robot_cfg.has_reaction_wheel else torch.zeros(self._num_envs, device=self._device)
+        return self.omega_reaction_wheel.squeeze(-1) if self._robot_cfg.has_reaction_wheel else torch.zeros(self._num_envs, device=self._device)
 
     def set_velocity(
         self,

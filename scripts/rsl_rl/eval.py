@@ -279,19 +279,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # env stepping
             obs, rew, dones, extras = env.step(actions)
             
+            # Always update completion counters (needed to detect end of skip phase)
             if "MultiTask" in args_cli.task:
                 for i, task_api in enumerate(tasks_apis):
                     task_start_idx = sum(task_chunk_sizes[:i])
                     task_end_idx = task_start_idx + task_chunk_sizes[i]
                     task_dones = dones[task_start_idx:task_end_idx]
-                    tasks_data[i]["dones"].append(task_dones)
                     task_completion_counts[i] += task_dones.int()
             else:
-                data["dones"].append(dones)
                 task_completion_counts += dones.unsqueeze(-1).int()
 
-           
             if skip_first_reset:
+                # Wait until every env has reset at least once before recording anything
                 if torch.all(torch.tensor(task_completion_counts) >= 1).item():
                     skip_first_reset = False
             else:
@@ -302,32 +301,29 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                         if not torch.all(task_completion_counts[i] >= runs_per_env_threshold).item():
                             all_tasks_completed = False
                             break
-                    
+
                     if all_tasks_completed:
-                        # print(f"[INFO] All tasks completed {args_cli.runs_per_env} runs per environment.")
                         break
-                    
-                    # Collect data from all tasks (including robot data for each task)
+
+                    # Record dones + eval data only after skip phase
                     for i, task_api in enumerate(tasks_apis):
-                        # Get task-specific data
-                        task_eval_data = task_api.eval_data
-                        
-                        # Get robot data for this task's environments
-                        robot_eval_data = env.env.get_wrapper_attr('robot_api').eval_data
                         task_start_idx = sum(task_chunk_sizes[:i])
                         task_end_idx = task_start_idx + task_chunk_sizes[i]
-                        task_robot_data = {k: v[task_start_idx:task_end_idx] for k, v in robot_eval_data.items()}
-                        
-                        # Combine task and robot data
-                        combined_data = {**task_eval_data, **task_robot_data}
+                        task_dones = dones[task_start_idx:task_end_idx]
+                        tasks_data[i]["dones"].append(task_dones)
 
+                        task_eval_data = task_api.eval_data
+                        robot_eval_data = env.env.get_wrapper_attr('robot_api').eval_data
+                        task_robot_data = {k: v[task_start_idx:task_end_idx] for k, v in robot_eval_data.items()}
+                        combined_data = {**task_eval_data, **task_robot_data}
                         for k, v in combined_data.items():
-                            tasks_data[i][k].append(v.clone()) 
-                        
+                            tasks_data[i][k].append(v.clone())
+
                 else:
                     if torch.all(task_completion_counts >= runs_per_env_threshold).item():
                         break
-                    # Single task evaluation (original logic)
+                    # Record dones + eval data only after skip phase
+                    data["dones"].append(dones)
                     new_data = copy.deepcopy(env.env.unwrapped.eval_data)
                     for k, v in new_data.items():
                         data[k].append(v)

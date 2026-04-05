@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import random
 import os
 
 class AutoRegister:
@@ -37,6 +38,25 @@ class BaseRobotPlots(AutoRegister):
         self._env_info = env_info
         self._save_plots_folder_path = folder_path
         self._plot_cfg = plot_cfg
+
+        dfs_to_concat = []
+        trajectory_offset = 0
+
+        if len(self._trajectories_dfs) > 0:
+            for group_key, group_dfs in self._trajectories_dfs.items():
+                for df in group_dfs:
+                    df = df.copy()
+                    df['trajectory_id'] += trajectory_offset
+                    dfs_to_concat.append(df)
+                    max_traj = df['trajectory_id'].max()
+                    trajectory_offset = max_traj + 1
+
+            if dfs_to_concat:
+                self.trajectories_to_plot = pd.concat(dfs_to_concat, ignore_index=True)
+            else:
+                self.trajectories_to_plot = None
+        else:
+            self.trajectories_to_plot = None
 
     def plot(self):
         raise NotImplementedError("Subclasses should implement this method.")

@@ -51,13 +51,15 @@ class BaseTaskPlots(AutoRegister):
             for group_key, group_dfs in self._trajectories_dfs.items():
                 for df in group_dfs:
                     df = df.copy()
-                    df['trajectory'] += trajectory_offset
+                    df['trajectory_id'] += trajectory_offset
                     dfs_to_concat.append(df)
-                    max_traj = df['trajectory'].max()
+                    max_traj = df['trajectory_id'].max()
                     trajectory_offset = max_traj + 1
 
+            if not dfs_to_concat:
+                return
             self.trajectories_to_plot = pd.concat(dfs_to_concat, ignore_index=True)
-            trajectory_names = self.trajectories_to_plot['trajectory'].unique()
+            trajectory_names = self.trajectories_to_plot['trajectory_id'].unique()
             self.trajectory_color_map_hex = {name: "#%06x" % random.randint(0, 0xFFFFFF) for name in trajectory_names}
 
         self.ALPHA_VALUE = 0.8
@@ -310,7 +312,7 @@ class BaseTaskPlots(AutoRegister):
         """
         Plots individual trajectories with distinct random hex colors using a global trajectory_color_map_hex.
         """
-        for trajectory_name, group in data_df.groupby('trajectory'):
+        for trajectory_name, group in data_df.groupby('trajectory_id'):
             # Get the pre-assigned random hex color for this trajectory
             hex_color = self.trajectory_color_map_hex[trajectory_name]
             ax.plot(group[x_col], group[y_col], color=hex_color, alpha=self.ALPHA_VALUE, label=f'Trajectory {trajectory_name}')
@@ -330,7 +332,7 @@ class BaseTaskPlots(AutoRegister):
             ax.set_ylim(y_lim[0], y_lim[1])
 
     def plot_trajectories_with_gradient(self, ax, data_df, x_col, y_col, step_col='step', cmap_name='viridis'):
-        for trajectory_name, group in data_df.groupby('trajectory'):
+        for trajectory_name, group in data_df.groupby('trajectory_id'):
             group = group.sort_values(step_col)
             x = group[x_col].values
             y = group[y_col].values
@@ -358,8 +360,8 @@ class BaseTaskPlots(AutoRegister):
 
     def plot_xy_trajectories_0_centered(self):
         xy_df = self.trajectories_to_plot.copy()
-        xy_df['tx'] = xy_df.groupby('trajectory')['target_position_x'].transform('first')
-        xy_df['ty'] = xy_df.groupby('trajectory')['target_position_y'].transform('first')
+        xy_df['tx'] = xy_df.groupby('trajectory_id')['target_position_x'].transform('first')
+        xy_df['ty'] = xy_df.groupby('trajectory_id')['target_position_y'].transform('first')
         xy_df['norm_position_x'] = xy_df['position_x'] - xy_df['tx']
         xy_df['norm_position_y'] = xy_df['position_y'] - xy_df['ty']
         xy_df = xy_df.drop(columns=['tx', 'ty'])
@@ -522,14 +524,14 @@ class BaseTaskPlots(AutoRegister):
             fig, ax = plt.subplots(figsize=(12, 10))
             
             # Plot robot trajectories for this group with reduced opacity
-            for trajectory_name, group in group_trajectories.groupby('trajectory'):
+            for trajectory_name, group in group_trajectories.groupby('trajectory_id'):
                 hex_color = self.trajectory_color_map_hex[trajectory_name]
                 ax.plot(group['position_x'], group['position_y'], 
                        color=hex_color, alpha=self.ALPHA_VALUE, linewidth=2,
                        label=f'Robot Trajectory {trajectory_name}', zorder=1)
             
             # Extract and plot gates (use first trajectory from group for gate positions)
-            first_trajectory = group_trajectories[group_trajectories['trajectory'] == group_trajectories['trajectory'].iloc[0]]
+            first_trajectory = group_trajectories[group_trajectories['trajectory_id'] == group_trajectories['trajectory_id'].iloc[0]]
             if not first_trajectory.empty:
                 first_row = first_trajectory.iloc[0]
                 
@@ -659,7 +661,7 @@ class BaseTaskPlots(AutoRegister):
                       edgecolor='blue', s=100, label='±1 SD Region')
             
             # Extract and plot gates (use first trajectory from group for gate positions)
-            first_trajectory = group_trajectories[group_trajectories['trajectory'] == group_trajectories['trajectory'].iloc[0]]
+            first_trajectory = group_trajectories[group_trajectories['trajectory_id'] == group_trajectories['trajectory_id'].iloc[0]]
             if not first_trajectory.empty:
                 first_row = first_trajectory.iloc[0]
                 

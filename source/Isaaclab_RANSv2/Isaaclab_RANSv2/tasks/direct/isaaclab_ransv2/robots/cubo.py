@@ -88,7 +88,7 @@ class CuboRobot(RobotCore):
         self.scalar_logger.add_log("robot_reward", "AVG/rw_usage", "mean")
 
     def get_observations(self) -> torch.Tensor:
-        return self._unaltered_actions
+        return self._previous_actions
 
     def compute_rewards(self):
         # TODO: DT should be factored in?
@@ -216,6 +216,9 @@ class CuboRobot(RobotCore):
         self._unaltered_actions = actions.clone()
         for randomizer in self.randomizers:
             randomizer.actions(dt=self.scene.physics_dt, actions=actions)
+            
+        # Clip the actions between [-1, 1] to ensure they are within the expected range.
+        actions = torch.clamp(actions, -1.0, 1.0)
             
         self._previous_actions = self._actions.clone()
         self._actions = actions

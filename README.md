@@ -49,6 +49,32 @@ unzip -d Isaaclab/source/isaaclab_assets/data /tmp/spacer-dreamlab-assets.zip
 rm /tmp/spacer-dreamlab-assets.zip
 ```
 
+Recalculate metrics from trajectories
+```
+python scripts/rsl_rl/recalc_metrics.py \
+    --task GoToPose \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_15-57-17_ppo_Pingu_GoToPose_rsl_rl_seed_1 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-04-36_ppo_Pingu_GoToPose_rsl_rl_seed_2 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-15-13_ppo_Pingu_GoToPose_rsl_rl_seed_3 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-25-51_ppo_Pingu_GoToPose_rsl_rl_seed_4 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-36-30_ppo_Pingu_GoToPose_rsl_rl_seed_5
+
+```
+
+Plots
+```
+python scripts/rsl_rl/plot_metrics.py \
+    --task GoToPose \
+    --robot Pingu \
+    --out logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/CustomPlots_2 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_15-57-17_ppo_Pingu_GoToPose_rsl_rl_seed_1 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-04-36_ppo_Pingu_GoToPose_rsl_rl_seed_2 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-15-13_ppo_Pingu_GoToPose_rsl_rl_seed_3 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-25-51_ppo_Pingu_GoToPose_rsl_rl_seed_4 \
+    logs/rsl_rl/AutoEnvGen_PPO_Pingu_Dynamic_Disturbance_Rejection/2026-04-04_19-36-30_ppo_Pingu_GoToPose_rsl_rl_seed_5
+
+```
+
 ## Overview
 
 This project/repository serves as a template for building projects or extensions based on Isaac Lab.
