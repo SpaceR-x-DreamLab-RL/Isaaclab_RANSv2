@@ -34,10 +34,7 @@ parser.add_argument(
     default=True, help="Overload experiment config. If set to True, it will load the cfg of the model that was used for training."
 )
 parser.add_argument(
-    "--algorithm",
-    type=str,
-    default="PPO",
-    help="The RL algorithm used for training the rsl-rl agent.",
+    "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
 parser.add_argument(
     "--ros_bridge",
@@ -92,9 +89,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-# config shortcuts
-algorithm = args_cli.algorithm.lower()
-agent_cfg_entry_point = "rsl_rl_cfg_entry_point" if algorithm in ["ppo"] else f"rsl_rl_{algorithm}_cfg_entry_point"
+import Isaaclab_RANSv2.tasks  # noqa: F401
 
 
 class IsaacLabROSNode(Node):
@@ -157,7 +152,7 @@ class IsaacLabROSNode(Node):
             
             # Reset environment to initialize internal state
             # Imp. for proper environment initialization
-            obs, _ = self.env.get_observations()
+            obs = self.env.get_observations()
             self.get_logger().info(f'Environment reset successful. Observation shape: {obs["obs"].shape if isinstance(obs, dict) else "unknown"}')
             
             self.get_logger().info(f'Environment and policy loaded successfully. Device: {self.device}')
@@ -246,7 +241,7 @@ class IsaacLabROSNode(Node):
             self.get_logger().error(f'Error publishing action: {str(e)}')
 
 
-@hydra_task_config(args_cli.task, agent_cfg_entry_point)
+@hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
     
     # Load environment config from checkpoint if available, otherwise parse from registry

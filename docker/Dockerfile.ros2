@@ -1,5 +1,5 @@
 # Everything past this stage is to install
-# ROS2 Humble
+# ROS2 Humble with Python 3.11 compatibility for Isaac Sim
 
 # What is the docker name suffix for the base image to load? (defaults to empty string)
 ARG DOCKER_NAME_SUFFIX=""
@@ -26,13 +26,32 @@ RUN --mount=type=cache,target=/var/cache/apt \
     ros-humble-rmw-fastrtps-cpp \
     # This includes various dev tools including colcon
     ros-dev-tools && \
-    # Install rosdeps for extensions that declare a ros_ws in
-    # their extension.toml
-    ${ISAACLAB_PATH}/isaaclab.sh -p ${ISAACLAB_PATH}/tools/install_deps.py rosdep ${ISAACLAB_PATH}/source && \
     apt -y autoremove && apt clean autoclean && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Add sourcing of setup.bash to .bashrc
-    echo "source /opt/ros/humble/setup.bash" >> ${HOME}/.bashrc
+    rm -rf /var/lib/apt/lists/*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Install prebuilt ROS2 Humble Python 3.11 workspace
+# The apt-installed ROS2 packages ship .cpython-310 shared objects which are
+# incompatible with Isaac Sim's bundled Python 3.11 interpreter.
+# This prebuilt workspace provides rclpy and message packages compiled for
+# Python 3.11. Source: https://github.com/camopel/isaacsim-ros2-python3.11
+# ─────────────────────────────────────────────────────────────────────────────
+ARG ROS2_PY311_URL="https://github.com/camopel/isaacsim-ros2-python3.11/releases/download/1.0.0/ros_py311.20250819.tar.gz"
+RUN curl -fsSL "${ROS2_PY311_URL}" -o /tmp/ros_py311.tar.gz && \
+    tar -xzf /tmp/ros_py311.tar.gz -C /opt/ros/ && \
+    rm /tmp/ros_py311.tar.gz
+
+# Install rosdeps for extensions that declare a ros_ws in their extension.toml
+RUN --mount=type=cache,target=/var/cache/apt \
+    . /opt/ros/humble/setup.sh && \
+    ${ISAACSIM_ROOT_PATH}/python.sh ${ISAACLAB_PATH}/tools/install_deps.py rosdep ${ISAAC_LAB_RANS_V2_PATH}/source && \
+    apt -y autoremove && apt clean autoclean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Source the apt ROS2 first, then the Python 3.11 overlay so its packages
+# take precedence for Isaac Sim's Python interpreter.
+RUN echo "source /opt/ros/humble/setup.bash" >> ${HOME}/.bashrc && \
+    echo "source /opt/ros/ros_py311/install/setup.bash" >> ${HOME}/.bashrc
 
 # Copy the RMW specifications for ROS2
 # https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_ros.html
