@@ -21,7 +21,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Maximal linear velocity at spawn pose in m/s. Defaults to 0.0 m/s."""
     spawn_min_ang_vel: float = 0.2
     """Minimal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
-    spawn_max_ang_vel: float = 1.5
+    spawn_max_ang_vel: float = 0.5
     """Maximal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
 
     # Goal spawn
@@ -35,7 +35,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Enable lateral velocity goal. Defaults to False."""
     goal_min_lat_vel: float = 0.0
     """Minimal lateral velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
-    goal_max_lat_vel: float = 0.001
+    goal_max_lat_vel: float = 0.0
     """Maximal lateral velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
     enable_angular_velocity: bool = True
     """Enable angular velocity goal. Defaults to True."""

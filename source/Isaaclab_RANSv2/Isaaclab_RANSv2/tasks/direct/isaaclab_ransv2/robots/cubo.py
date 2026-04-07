@@ -76,91 +76,96 @@ class CuboRobot(RobotCore):
         self.scalar_logger.add_log("robot_state", "AVG/thruster_norm", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/rw_body_torque", "mean")
         self.scalar_logger.add_log("robot_state", "AVG/rw_omega", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/thruster_action_rate", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/joint_acceleration", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/thruster_effort", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/rw_saturation", "mean")
-        self.scalar_logger.add_log("robot_state", "AVG/rw_usage", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/thruster_action_rate", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/joint_acceleration", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/thruster_effort", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/rw_saturation", "mean")
-        self.scalar_logger.add_log("robot_reward", "AVG/rw_usage", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_torque_sq", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/rw_overspin", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_torque_sq", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/rw_overspin", "mean")
+
+    @property
+    def eval_data_keys(self) -> list[str]:
+        keys = [
+            "position",
+            "heading",
+            "linear_velocity",
+            "angular_velocity",
+            "thrust_action",
+            "actions",
+            "unaltered_actions",
+        ]
+        if self._robot_cfg.has_reaction_wheel:
+            keys += ["reaction_wheel_action", "omega_reaction_wheel"]
+        return keys
+
+    @property
+    def eval_data_specs(self) -> dict[str, list[str]]:
+        num_thrusters = self._robot_cfg.num_thrusters
+        specs = {
+            "position": [".robot_pos.x.m", ".robot_pos.y.m", ".robot_pos.z.m"],
+            "heading": [".robot_heading.rad"],
+            "linear_velocity": [".robot_lin_vel.x.m/s", ".robot_lin_vel.y.m/s", ".robot_lin_vel.z.m/s"],
+            "angular_velocity": [".robot_ang_vel.x.rad/s", ".robot_ang_vel.y.rad/s", ".robot_ang_vel.z.rad/s"],
+            "thrust_action": [f".thruster{i}.force.N" for i in range(num_thrusters)],
+            "actions": [f".robot_actions{i}.u" for i in range(self._robot_cfg.action_space)],
+            "unaltered_actions": [f".robot_unaltered_actions{i}.u" for i in range(self._robot_cfg.action_space)],
+        }
+        if self._robot_cfg.has_reaction_wheel:
+            specs["reaction_wheel_action"] = [".reaction_wheel_action.u"]
+            specs["omega_reaction_wheel"] = [".omega_reaction_wheel.rad/s"]
+        return specs
+
+    @property
+    def eval_data(self) -> dict:
+        data = {
+            "position": self.root_pos_w,
+            "heading": self.heading_w,
+            "linear_velocity": self.root_lin_vel_b,
+            "angular_velocity": self.root_ang_vel_b,
+            "thrust_action": self._thrust_action[..., -1],
+            "actions": self._actions,
+            "unaltered_actions": self._unaltered_actions,
+        }
+        if self._robot_cfg.has_reaction_wheel:
+            data["reaction_wheel_action"] = self._reaction_wheel_action
+            data["omega_reaction_wheel"] = self.omega_reation_wheel
+        return data
 
     def get_observations(self) -> torch.Tensor:
         return self._previous_actions
 
     def compute_rewards(self):
-        # TODO: DT should be factored in?
-        
         """
-        Reward term reference for Cubo
-        --------------------------------
-        All terms are penalties (negative scales) applied on top of the task-level reward.
-        
-        THRUSTERS
-          joint_acceleration    (rew_joint_accel_scale=-2.5e-6)
-              Penalizes the sum of squared joint accelerations across all joints.
-              Discourages high-frequency, jerky motion anywhere in the articulation.
-        
-          thruster_action_rate  (rew_action_rate_scale=-0.12/8, direct mode only)
-              Penalizes the L1 change in thruster commands between consecutive steps.
-              Sliced to thruster dims only so RW does not inflate this term.
-              Encourages smooth, gradual thrust transitions rather than bang-bang control.
-        
-          thruster_effort       (rew_thruster_effort_scale=-0.01)
-              Penalizes the total normalized thrust summed over all 8 thrusters.
-              Captures sustained activation cost that action_rate misses (a robot
-              holding constant thrust pays zero action_rate but non-zero effort).
-        
-        REACTION WHEEL
-          rw_saturation         (rew_reaction_wheel_saturation_scale=-0.1)
-              Penalizes omega_rw^2 (internal reaction wheel angular speed, squared).
-              A saturated wheel cannot produce torque; this keeps speed well below the
-              physical limit so heading authority is always available.
-        
-          rw_usage              (rew_reaction_wheel_usage_scale=-0.05)
-              Penalizes |commanded_torque| — discourages spinning the wheel unnecessarily.
-              Together with rw_saturation: the policy learns to use the wheel only when
-              there is a heading error to correct and to desaturate it afterwards.
+        Reward term reference for Cubo (reaction-wheel only)
+        -----------------------------------------------------
+        Single penalty applied on top of the task-level reward:
+
+          rw_torque_sq  (rew_rw_torque_scale, negative)
+              Penalizes action^2 (the normalized RW command, squared).
+              Quadratic growth makes high-torque commands disproportionately
+              expensive while near-zero nudges are nearly free.  Because the
+              cost accumulates every step, sustained torque is also penalized
+              — the policy learns to apply brief, gentle corrections.
+
+          rw_overspin  (rew_rw_overspin_scale, negative)
+              Penalizes (omega_rw / max_rw_speed)^2.  Keeps the wheel speed
+              within the physical operating range (max ~20 rad/s in the lab).
+              Quadratic so low speeds are nearly free but approaching the
+              limit becomes very costly.
         """
 
-        joint_accelerations = torch.sum(torch.square(self.joint_acc), dim=1)
-        self.scalar_logger.log("robot_state", "AVG/joint_acceleration", joint_accelerations)
-        self.scalar_logger.log("robot_reward", "AVG/joint_acceleration", joint_accelerations * self._robot_cfg.rew_joint_accel_scale)
-
-        reward = joint_accelerations * self._robot_cfg.rew_joint_accel_scale
-        if self._robot_cfg.direct_thruster_control:
-            # Slice only thruster dims so RW changes don't pollute this term
-            thruster_action_rate = torch.sum(
-                torch.abs(
-                    self._unaltered_actions[:, : self._robot_cfg.num_thrusters]
-                    - self._previous_unaltered_actions[:, : self._robot_cfg.num_thrusters]
-                ),
-                dim=1,
-            )
-            self.scalar_logger.log("robot_state", "AVG/thruster_action_rate", thruster_action_rate)
-            self.scalar_logger.log("robot_reward", "AVG/thruster_action_rate", thruster_action_rate * self._robot_cfg.rew_action_rate_scale)
-            reward = reward + thruster_action_rate * self._robot_cfg.rew_action_rate_scale
-
-        # --- Thruster effort: penalize sustained total thrust (fuel cost) ---
-        thruster_effort = torch.sum(torch.abs(self._thrust_action[:, :, 2]), dim=-1) / self._robot_cfg.max_thrust
-        self.scalar_logger.log("robot_state", "AVG/thruster_effort", thruster_effort)
-        self.scalar_logger.log("robot_reward", "AVG/thruster_effort", thruster_effort * self._robot_cfg.rew_thruster_effort_scale)
-        reward = reward + thruster_effort * self._robot_cfg.rew_thruster_effort_scale
+        reward = torch.zeros(self._num_envs, device=self._device, dtype=torch.float32)
 
         if self._robot_cfg.has_reaction_wheel:
-            # --- RW saturation: penalize high internal wheel speed (quadratic) ---
-            rw_saturation = torch.square(self.omega_reation_wheel).squeeze(-1)
-            self.scalar_logger.log("robot_state", "AVG/rw_saturation", rw_saturation)
-            self.scalar_logger.log("robot_reward", "AVG/rw_saturation", rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale)
-            reward = reward + rw_saturation * self._robot_cfg.rew_reaction_wheel_saturation_scale
+            # # Penalize high torque commands
+            rw_torque_sq = torch.square(self._actions[:, -1])
+            self.scalar_logger.log("robot_state", "AVG/rw_torque_sq", rw_torque_sq)
+            self.scalar_logger.log("robot_reward", "AVG/rw_torque_sq", rw_torque_sq * self._robot_cfg.rew_rw_torque_scale)
+            reward = reward + rw_torque_sq * self._robot_cfg.rew_rw_torque_scale
 
-            # --- RW usage: penalize commanded torque magnitude ---
-            rw_usage = torch.abs(self._reaction_wheel_action).squeeze(-1)
-            self.scalar_logger.log("robot_state", "AVG/rw_usage", rw_usage)
-            self.scalar_logger.log("robot_reward", "AVG/rw_usage", rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale)
-            reward = reward + rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale
+            # Penalize high wheel speed (normalized by physical max)
+            rw_overspin = torch.square(self.omega_reation_wheel.squeeze(-1) / self._robot_cfg.max_rw_speed)
+            self.scalar_logger.log("robot_state", "AVG/rw_overspin", rw_overspin)
+            self.scalar_logger.log("robot_reward", "AVG/rw_overspin", rw_overspin * self._robot_cfg.rew_rw_overspin_scale)
+            reward = reward + rw_overspin * self._robot_cfg.rew_rw_overspin_scale
 
         return reward
 
@@ -199,15 +204,7 @@ class CuboRobot(RobotCore):
         Process the actions for the robot. Expects continuous actions in the range [-1, 1]. This operates when the flag `direct_thruster_control` is False. Thrust (body-frame or direct) uses leading dimensions; auxiliary actuators use trailing
         indices (reaction wheel at -1, others at -2, -3, ... if added).
 
-        When direct_thruster_control is False (body-frame):
-            - actions[:,0] = forward/backward thrust
-            - actions[:,1] = left/right thrust
-            - actions[:,2] = yaw thrust
-            - actions[:, -1] = reaction wheel (if has_reaction_wheel)
-
-        When direct_thruster_control is True:
-            - actions[:, 0:8] = direct thruster commands (one per thruster)
-            - actions[:, -1] = reaction wheel (if has_reaction_wheel)
+        - actions[:, -1] = reaction wheel (if has_reaction_wheel)
         """
         # Common: slice to robot action dim, store for obs/rewards, apply randomizers, update _actions (both modes)
         actions = actions[:, : self._dim_robot_act].float()
@@ -223,34 +220,34 @@ class CuboRobot(RobotCore):
         self._previous_actions = self._actions.clone()
         self._actions = actions
         
-        # Thrust: first 3 (body-frame) or num_thrusters (direct); arms and rw are the same after that
-        thrust_dim = self._robot_cfg.num_thrusters if self._robot_cfg.direct_thruster_control else 3
+        # # Thrust: first 3 (body-frame) or num_thrusters (direct); arms and rw are the same after that
+        # thrust_dim = self._robot_cfg.num_thrusters if self._robot_cfg.direct_thruster_control else 3
 
-        self._thrust_action.fill_(0.0)
+        # self._thrust_action.fill_(0.0)
 
-        if self._robot_cfg.direct_thruster_control:
-            # Direct thruster mode: one command per thruster
-            thrust_mag = (actions[:, :thrust_dim] * 0.5 + 0.5) * self._robot_cfg.max_thrust
-            self._thrust_action[:, :, 2] = thrust_mag # .clamp(0.0, self._robot_cfg.max_thrust)
+        # if self._robot_cfg.direct_thruster_control:
+        #     # Direct thruster mode: one command per thruster
+        #     thrust_mag = (actions[:, :thrust_dim] * 0.5 + 0.5) * self._robot_cfg.max_thrust
+        #     self._thrust_action[:, :, 2] = thrust_mag # .clamp(0.0, self._robot_cfg.max_thrust)
 
-        else:
-            # Body-frame control: leading 3 = (forward, left/right, yaw); pass signed to kernel
-            wp_actions = wp.from_torch(actions[:, :3].contiguous(), 
-            dtype=wp.vec3f)
-            body_act = actions[:, :3].float().contiguous()
-            wp_actions = wp.from_torch(body_act, dtype=wp.vec3f)
-            wp_thrust_action = wp.from_torch(self._thrust_action, dtype=wp.vec3f)
-            wp.launch(
-                kernel=compute_thruster_mapping,
-                dim=self._num_envs,
-                inputs=[
-                    wp_actions,
-                    wp_thrust_action,
-                    float(self._robot_cfg.max_thrust),
-                ],
-                device=self._device,
-            )
-            self._thrust_action = wp.to_torch(wp_thrust_action)
+        # else:
+        #     # Body-frame control: leading 3 = (forward, left/right, yaw); pass signed to kernel
+        #     wp_actions = wp.from_torch(actions[:, :3].contiguous(), 
+        #     dtype=wp.vec3f)
+        #     body_act = actions[:, :3].float().contiguous()
+        #     wp_actions = wp.from_torch(body_act, dtype=wp.vec3f)
+        #     wp_thrust_action = wp.from_torch(self._thrust_action, dtype=wp.vec3f)
+        #     wp.launch(
+        #         kernel=compute_thruster_mapping,
+        #         dim=self._num_envs,
+        #         inputs=[
+        #             wp_actions,
+        #             wp_thrust_action,
+        #             float(self._robot_cfg.max_thrust),
+        #         ],
+        #         device=self._device,
+        #     )
+        #     self._thrust_action = wp.to_torch(wp_thrust_action)
         
 
         if self._robot_cfg.has_reaction_wheel:

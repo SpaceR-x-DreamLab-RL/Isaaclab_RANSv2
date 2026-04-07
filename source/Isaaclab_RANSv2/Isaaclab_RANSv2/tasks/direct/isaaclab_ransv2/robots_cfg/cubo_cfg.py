@@ -41,11 +41,15 @@ class CuboRobotCfg(RobotCoreCfg):
         b = 5.372473380648529e-05 # N*m*s/rad (viscous damping)
         J_rw = 0.00112703295596 # kg*m^2
 
-    rew_action_rate_scale = -0.12 / 8
-    rew_joint_accel_scale = -2.5e-6
-    rew_thruster_effort_scale = -0.01
-    rew_reaction_wheel_saturation_scale = -2.5e-6
-    rew_reaction_wheel_usage_scale = -0.05
+    rew_rw_torque_scale = -0.7
+    """Quadratic penalty on the normalized RW command (action^2).
+    Penalizes both high-magnitude and sustained torque requests."""
+
+    max_rw_speed = 20.0
+    """Physical max reaction wheel speed in rad/s (lab-measured limit)."""
+    rew_rw_overspin_scale = -0.01
+    """Quadratic penalty on (omega_rw / max_rw_speed)^2.
+    Keeps wheel speed within the physical operating range."""
 
     max_thrust = 1.0
     """Maximum thrust of the thrusters in Newtons"""
@@ -101,9 +105,10 @@ class CuboRobotCfg(RobotCoreCfg):
 
     @property
     def action_space(self) -> int:
-        if self.direct_thruster_control:
-            return self.num_thrusters + (1 if self.has_reaction_wheel else 0)
-        return 3 + (1 if self.has_reaction_wheel else 0)
+        return 1
+        # if self.direct_thruster_control:
+        #     return self.num_thrusters + (1 if self.has_reaction_wheel else 0)
+        # return 3 + (1 if self.has_reaction_wheel else 0)
 
     @property
     def observation_space(self) -> int:

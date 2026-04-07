@@ -2,10 +2,10 @@
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 TASK_ENV="Isaaclab-RANSv2-AutoEnvGen-v0"
-ROBOT_NAME="Pingu"
-TASK_NAME="GoToPose"
-CUSTOM_PLOTS_LOG_NAME="PPO_Pingu_GoToPose_Plots"
-NUM_SEEDS=5
+ROBOT_NAME="Cubo"
+TASK_NAME="TrackVelocities"
+CUSTOM_PLOTS_LOG_NAME="PPO_Cubo_Stabilization_RW_Plots"
+NUM_SEEDS=1
 NUM_EVAL_ENVS=128
 RUNS_PER_ENV=4 #Skip first reset on by default, technically n-1 runs per env
 AGENT="rsl_rl_rnn_cfg_entry_point" #rsl_rl_cfg_entry_point
