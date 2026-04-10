@@ -15,6 +15,7 @@ from isaaclab.app import AppLauncher
 # local imports
 import cli_args  # isort: skip
 import os
+from tensordict import TensorDict
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Deploy an RL agent with RSL-RL via ROS2 bridge.")
@@ -66,7 +67,7 @@ import torch
 # ROS2 imports
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout
+from std_msgs.msg import Float64MultiArray, MultiArrayDimension, MultiArrayLayout
 import threading
 import numpy as np
 
@@ -106,7 +107,7 @@ class IsaacLabROSNode(Node):
         
         # Subscribers
         self.observation_sub = self.create_subscription(
-            Float32MultiArray, 
+            Float64MultiArray, 
             'isaac_lab/formatted_observation',
             self.obs_callback,
             10
@@ -114,7 +115,7 @@ class IsaacLabROSNode(Node):
         
         # Publishers (Isaac Lab -> RANS_DeployToRobot)
         self.action_pub = self.create_publisher(
-            Float32MultiArray,  # Actions as array
+            Float64MultiArray,  # Actions as array
             'isaac_lab/action',
             10
         )
@@ -186,14 +187,15 @@ class IsaacLabROSNode(Node):
         """Run policy inference with the latest observation and taskID_obs."""
         try:
             with torch.inference_mode():
-                # Create observation dictionary as expected by RSL_RL
+                # Create observation dictionary as expected by RSL_RL v3.3.0
+                # get_actor_obs indexes obs by obs_groups["policy"] keys (e.g. "policy")
                 obs = {"policy": self.latest_obs}
-                
+
                 # Debug: Log observation shapes
                 self.get_logger().info(f'Policy inference: obs.shape={self.latest_obs.shape}')
                 # Policy should be initialized by this point
                 if self.policy is not None:
-                    action = self.policy(obs['policy'])
+                    action = self.policy(obs)
                     self.env.unwrapped._pre_physics_step(action)
                     actions = self.env.unwrapped.robot_api._actions
 
@@ -203,11 +205,12 @@ class IsaacLabROSNode(Node):
                     self.get_logger().error('Policy is None during inference')
                 
         except Exception as e:
-            self.get_logger().error(f'Error in policy inference: {str(e)}')
+            import traceback
+            self.get_logger().error(f'Error in policy inference: {str(e)}\n{traceback.format_exc()}')
             # Publish zero action as fallback
             if self.latest_obs is not None:
                 # Use the correct action space from the environment config
-                action_dim = self.env.unwrapped.cfg.action_space if hasattr(self.env.unwrapped, 'cfg') else 8
+                action_dim = self.env.unwrapped.cfg.action_space if hasattr(self.env.unwrapped, 'cfg') else 9  # thrusters and reaction wheel
                 self.get_logger().info(f'Fallback action: action_dim={action_dim}, env_cfg.action_space={getattr(self.env.unwrapped.cfg, "action_space", "N/A") if hasattr(self.env.unwrapped, "cfg") else "N/A"}')
                 fallback_action = torch.zeros((self.latest_obs.shape[0], action_dim), device=self.latest_obs.device)
                 self.publish_action(fallback_action.squeeze(0))
@@ -219,7 +222,7 @@ class IsaacLabROSNode(Node):
             action: Action tensor from policy
         """
         try:
-            msg = Float32MultiArray()
+            msg = Float64MultiArray()
             
             # Convert tensor to flat array
             action_np = action.cpu().numpy().flatten()
