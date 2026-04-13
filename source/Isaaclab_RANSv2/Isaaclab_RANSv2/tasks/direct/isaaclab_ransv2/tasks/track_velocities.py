@@ -62,12 +62,10 @@ class TrackVelocitiesTask(TaskCore):
             list[str]: The keys of the evaluation data."""
 
         return [
-            "linear_velocity_target", 
-            "lateral_velocity_target", 
-            "angular_velocity_target", 
+            "linear_velocity_target",
+            "lateral_velocity_target",
+            "angular_velocity_target",
             "goal_reached",
-            "error_linear_velocity",
-            "error_lateral_velocity",
             "error_angular_velocity",
         ]
     
@@ -78,8 +76,6 @@ class TrackVelocitiesTask(TaskCore):
             "lateral_velocity_target": [".m/s"],
             "angular_velocity_target": [".rad/s"],
             "goal_reached": [".u"],
-            "error_linear_velocity": [".lin_vel_error.m/s"],
-            "error_lateral_velocity": [".lat_vel_error.m/s"],
             "error_angular_velocity": [".ang_vel_error.rad/s"],
         }
 
@@ -115,6 +111,7 @@ class TrackVelocitiesTask(TaskCore):
         self.scalar_logger.add_log("task_reward", "EMA/linear_velocity", "ema")
         self.scalar_logger.add_log("task_reward", "EMA/lateral_velocity", "ema")
         self.scalar_logger.add_log("task_reward", "EMA/angular_velocity", "ema")
+        self.scalar_logger.add_log("task_state", "AVG/convergence_alpha", "mean")
         self.scalar_logger.set_ema_coeff(self._task_cfg.ema_coeff)
 
     def initialiaze_buffers(self, env_ids: torch.Tensor | None = None) -> None:
@@ -138,6 +135,12 @@ class TrackVelocitiesTask(TaskCore):
         self._num_steps = torch.zeros((self._num_envs), device=self._device, dtype=torch.int32)
         self._smoothing_factor = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self._update_after_n_steps = torch.zeros((self._num_envs), device=self._device, dtype=torch.int32)
+        # Initial angular velocity at spawn (used for convergence ramp)
+        self._initial_angular_velocity = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        # Step counter for convergence ramp (increments every step, resets only on episode reset)
+        self._convergence_step_count = torch.zeros((self._num_envs), device=self._device, dtype=torch.int32)
+        # Convergence alpha (0 = spawn velocity, 1 = fully converged to target)
+        self._convergence_alpha = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
 
     def get_observations(self) -> torch.Tensor:
         """
@@ -164,12 +167,20 @@ class TrackVelocitiesTask(TaskCore):
         Returns:
             torch.Tensor: The observation tensor."""
 
+        # Increment convergence step counter and compute convergence alpha
+        self._convergence_step_count += 1
+        self._convergence_alpha = (self._convergence_step_count.float() / self._task_cfg.convergence_steps).clamp(0, 1)
+        effective_ang_vel_target = (
+            (1 - self._convergence_alpha) * self._initial_angular_velocity
+            + self._convergence_alpha * self._angular_velocity_target 
+        )
+
         # linear velocity error
         err_lin_vel = self._linear_velocity_target - self._robot.root_com_lin_vel_b[:, 0]
         # lateral velocity error
         err_lat_vel = self._lateral_velocity_target - self._robot.root_com_lin_vel_b[:, 1]
-        # Angular velocity error
-        err_ang_vel = self._angular_velocity_target - self._robot.root_com_ang_vel_w[:, 2]
+        # Angular velocity error (uses ramped effective target)
+        err_ang_vel = effective_ang_vel_target - self._robot.root_com_ang_vel_w[:, 2]
 
         # Store in buffer
         self._task_data[:, 0] = err_lin_vel * self._task_cfg.enable_linear_velocity
@@ -188,6 +199,7 @@ class TrackVelocitiesTask(TaskCore):
         self.scalar_logger.log(
             "task_state", "AVG/absolute_angular_velocity", torch.abs(self._robot.root_com_ang_vel_w[:, 2])
         )
+        self.scalar_logger.log("task_state", "AVG/convergence_alpha", self._convergence_alpha)
 
         for randomizer in self.randomizers:
             randomizer.observations(observations=self._task_data)
@@ -206,8 +218,12 @@ class TrackVelocitiesTask(TaskCore):
         linear_velocity_distance = torch.abs(self._linear_velocity_target - self._robot.root_com_lin_vel_b[:, 0])
         # Lateral velocity error
         lateral_velocity_distance = torch.abs(self._lateral_velocity_target - self._robot.root_com_lin_vel_b[:, 1])
-        # Angular velocity error
-        angular_velocity_distance = torch.abs(self._angular_velocity_target - self._robot.root_com_ang_vel_w[:, 2])
+        # Angular velocity error (uses ramped effective target from convergence alpha)
+        effective_ang_vel_target = (
+            (1 - self._convergence_alpha) * self._initial_angular_velocity
+            + self._convergence_alpha * self._angular_velocity_target
+        )
+        angular_velocity_distance = torch.abs(effective_ang_vel_target - self._robot.root_com_ang_vel_w[:, 2])
 
         # Update logs (exponential moving average to see the performance at the end of the episode)
         self.scalar_logger.log("task_state", "EMA/linear_velocity_distance", linear_velocity_distance)
@@ -280,6 +296,7 @@ class TrackVelocitiesTask(TaskCore):
         super().reset(env_ids, gen_actions=gen_actions, env_seeds=env_seeds)
 
         self._num_steps[env_ids] = 0
+        self._convergence_step_count[env_ids] = 0
         self.update_goals()
 
     def get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -457,6 +474,9 @@ class TrackVelocitiesTask(TaskCore):
             + self._task_cfg.spawn_min_ang_vel)
         )
         initial_velocity[:, 5] = angular_velocity
+
+        # Store initial angular velocity for convergence ramp
+        self._initial_angular_velocity[env_ids] = angular_velocity
 
         # Apply to articulation
         self._robot.set_pose(initial_pose, env_ids)

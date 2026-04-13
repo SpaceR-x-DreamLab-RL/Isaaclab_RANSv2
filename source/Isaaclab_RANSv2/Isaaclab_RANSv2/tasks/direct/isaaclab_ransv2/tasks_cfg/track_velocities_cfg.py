@@ -49,6 +49,11 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     interval: tuple[int, int] = (60, 80)
     smoothing_factor: tuple[float, float] = (0.0, 0.9)
 
+    # Convergence ramp: number of steps over which the effective target linearly
+    # interpolates from the spawn velocity to the desired target.
+    # Set to 0 to disable (instant target).
+    convergence_steps: int = 5000
+
     # Tolerance
     linear_velocity_tolerance: float = 0.01
     lateral_velocity_tolerance: float = 0.01
