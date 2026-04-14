@@ -4,7 +4,7 @@
 TASK_ENV="Isaaclab-RANSv2-AutoEnvGen-v0"
 ROBOT_NAME="Pingu"
 TASK_NAME="GoToPose"
-CUSTOM_PLOTS_LOG_NAME="PPO_Pingu_GoToPose_All_Actuators_RNN_DomRand_v2"
+CUSTOM_PLOTS_LOG_NAME="PPO_Pingu_GoToPose_All_Actuators"
 NUM_SEEDS=5
 NUM_EVAL_ENVS=128
 RUNS_PER_ENV=4 #Skip first reset on by default, technically n-1 runs per env
