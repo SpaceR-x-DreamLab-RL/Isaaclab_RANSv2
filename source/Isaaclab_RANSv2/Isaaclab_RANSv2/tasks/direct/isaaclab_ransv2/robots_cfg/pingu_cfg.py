@@ -42,7 +42,7 @@ class PinguRobotCfg(RobotCoreCfg):
     base_joint_dof_name = ["base_joint"]
     if has_reaction_wheel:
         reaction_wheel_dof_name = ["reaction_wheel_joint"]
-        reaction_wheel_scale = 0.05 # 200 # 0.05  # [Nm]
+        reaction_wheel_scale = 0.05 # 0.05 [Nm]
         b = 5.372473380648529e-05 # N*m*s/rad (viscous damping)
         J_rw = 0.00112703295596 # kg*m^2
 
