@@ -114,6 +114,9 @@ class AutoEnvGen(DirectRLEnv):
 
         self.task_api.register_robot(self.robot_api)
         self.task_api.register_sensors()
+        # Ensure robot-level sensors (e.g. Pingu's arm contact sensor) are registered
+        # even for tasks that don't explicitly call it themselves.
+        self.robot_api.register_sensors()
 
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())

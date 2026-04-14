@@ -352,17 +352,17 @@ def main() -> None:
                 new_action[:, 5] = 1.0
                 new_action[:, 7] = 1.0
             elif action[3] > 0:  # left arm elbow
-                print("Mapping left arm elbow action +v")
-                new_action[:, 10] = 1.0
+                print("Mapping left arm elbow action z")
+                new_action[:, 8] = 1.0
             elif action[3] < 0:  # left arm elbow
-                print("Mapping left arm elbow action -v")
-                new_action[:, 10] = -1.0
+                print("Mapping left arm elbow action x")
+                new_action[:, 8] = -1.0
             elif action[4] > 0:  # right arm elbow
-                print("Mapping right arm elbow action +v")
-                new_action[:, 10] = 1.0
+                print("Mapping right arm elbow action c")
+                new_action[:, 9] = 1.0
             elif action[4] < 0:  # right arm elbow
-                print("Mapping right arm elbow action -v")
-                new_action[:, 10] = -1.0
+                print("Mapping right arm elbow action v")
+                new_action[:, 9] = -1.0
             elif action[5] > 0:  # reaction wheel positive
                 print("Mapping reaction wheel action +v")
                 new_action[:, -1] = 1.0
@@ -509,7 +509,7 @@ def main() -> None:
             # base_action[:, 6] = args_cli.rw_torque
             # Arms 
             # base_action[:, 8:10] = -1.0
-            # base_action[:, 10:12] = 1.0
+            # base_action[:, 8:12] = 1.0
         else:
             omni.log.error(f"rw_test not supported for robot '{robot_name}'")
             env.close()

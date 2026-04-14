@@ -42,7 +42,7 @@ class PinguRobotCfg(RobotCoreCfg):
     base_joint_dof_name = ["base_joint"]
     if has_reaction_wheel:
         reaction_wheel_dof_name = ["reaction_wheel_joint"]
-        reaction_wheel_scale = 0.1 # 200 # 0.1  # [Nm]
+        reaction_wheel_scale = 0.05 # 200 # 0.05  # [Nm]
         b = 5.372473380648529e-05 # N*m*s/rad (viscous damping)
         J_rw = 0.00112703295596 # kg*m^2
 
@@ -54,6 +54,12 @@ class PinguRobotCfg(RobotCoreCfg):
     rew_reaction_wheel_usage_scale = -0.05
     rew_arm_action_rate_scale = -0.1
     rew_arm_symmetry_scale = -0.05
+    # --- Arm collision penalty ---
+    # Penalty applied when an arm link's net contact force exceeds the threshold.
+    # Typical net force from a benign contact is << 1N; the threshold filters
+    # sensor noise while still catching true collisions.
+    rew_arm_collision_scale: float = -1.0
+    arm_collision_force_threshold: float = 0.1
 
     max_thrust = 1.0
     """Maximum thrust of the thrusters in Newtons"""
@@ -100,6 +106,15 @@ class PinguRobotCfg(RobotCoreCfg):
         update_period=0.0,
         history_length=3,
         debug_vis=True,
+    )
+    # Contact sensor covering the 4 arm segments (arm_link_1..4 in the USD).
+    # Any contact (self or external) on these bodies produces a non-zero net force
+    # and is penalized via rew_arm_collision_scale.
+    arm_contact_forces: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/arm_link_.*",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
     )
 
     # Spaces (depend on direct_thruster_control)

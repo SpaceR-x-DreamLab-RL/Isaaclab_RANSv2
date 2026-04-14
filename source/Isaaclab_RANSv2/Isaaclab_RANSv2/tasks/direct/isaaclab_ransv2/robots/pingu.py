@@ -167,6 +167,9 @@ class PinguRobot(RobotCore):
         self.scalar_logger.add_log("robot_reward", "AVG/rw_usage", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/arm_action_rate", "mean")
         self.scalar_logger.add_log("robot_reward", "AVG/arm_symmetry", "mean")
+        self.scalar_logger.add_log("robot_state", "AVG/arm_contact_force", "mean")
+        self.scalar_logger.add_log("robot_state", "SUM/arm_collision", "mean")
+        self.scalar_logger.add_log("robot_reward", "AVG/arm_collision", "mean")
 
     def get_observations(self) -> torch.Tensor:
         return self._previous_actions
@@ -262,6 +265,22 @@ class PinguRobot(RobotCore):
         self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
         self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
         reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
+
+        # --- Arm collision: penalize any contact on the arm links ---
+        # net_forces_w has shape (num_envs, num_bodies, 3). Take the max over bodies
+        # of the force magnitude so a single colliding arm triggers the penalty.
+        arm_forces = self.arm_contacts.data.net_forces_w  # (N, B, 3)
+        if arm_forces is not None:
+            arm_force_mag = torch.norm(arm_forces, dim=-1)  # (N, B)
+            max_arm_force = torch.max(arm_force_mag, dim=-1)[0]  # (N,)
+            arm_collision = (max_arm_force > self._robot_cfg.arm_collision_force_threshold).float()
+            print("arm collision", arm_collision)
+            self.scalar_logger.log("robot_state", "AVG/arm_contact_force", max_arm_force)
+            self.scalar_logger.log("robot_state", "SUM/arm_collision", arm_collision)
+            self.scalar_logger.log(
+                "robot_reward", "AVG/arm_collision", arm_collision * self._robot_cfg.rew_arm_collision_scale
+            )
+            reward = reward + arm_collision * self._robot_cfg.rew_arm_collision_scale
 
         # --- Arm symmetry: penalize left/right asymmetry (floating platform angular momentum bias) ---
         # arm_position_targets: [left_shoulder, left_elbow, right_shoulder, right_elbow]
@@ -508,9 +527,14 @@ class PinguRobot(RobotCore):
 
     def register_sensors(self) -> None:
         # Contact sensor
-        if self._robot_cfg.contact_sensor_active:
+        if self._robot_cfg.contact_sensor_active and "robot_contacts" not in self.scene.sensors:
             self.scene.sensors["robot_contacts"] = ContactSensor(self._robot_cfg.body_contact_forces)
             self.contacts: ContactSensor = self.scene["robot_contacts"]
+
+        # Arm contact sensor — always registered; used to penalize arm collisions.
+        if "robot_arm_contacts" not in self.scene.sensors:
+            self.scene.sensors["robot_arm_contacts"] = ContactSensor(self._robot_cfg.arm_contact_forces)
+            self.arm_contacts: ContactSensor = self.scene["robot_arm_contacts"]
 
     def create_robot_visualization(self) -> None:
         """Creates arrow markers at each thruster position pointing in the thrust direction."""
