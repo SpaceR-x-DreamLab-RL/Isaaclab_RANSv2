@@ -28,7 +28,7 @@ class PinguRobotCfg(RobotCoreCfg):
 
     robot_cfg: ArticulationCfg = PINGU_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     marker_height = 0.9
-    has_reaction_wheel = True
+    has_reaction_wheel = False
     num_thrusters = 8
     direct_thruster_control = True
 
