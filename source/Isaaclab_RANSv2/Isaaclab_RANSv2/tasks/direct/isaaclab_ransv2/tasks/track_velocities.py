@@ -65,17 +65,23 @@ class TrackVelocitiesTask(TaskCore):
             "linear_velocity_target",
             "lateral_velocity_target",
             "angular_velocity_target",
+            "effective_angular_velocity_target",
             "goal_reached",
+            "error_linear_velocity",
+            "error_lateral_velocity",
             "error_angular_velocity",
         ]
-    
+
     @property
     def eval_data_specs(self)->dict[str, list[str]]:
         return {
             "linear_velocity_target": [".m/s"],
             "lateral_velocity_target": [".m/s"],
             "angular_velocity_target": [".rad/s"],
+            "effective_angular_velocity_target": [".rad/s"],
             "goal_reached": [".u"],
+            "error_linear_velocity": [".lin_vel_error.m/s"],
+            "error_lateral_velocity": [".lat_vel_error.m/s"],
             "error_angular_velocity": [".ang_vel_error.rad/s"],
         }
 
@@ -86,10 +92,11 @@ class TrackVelocitiesTask(TaskCore):
             "linear_velocity_target": self._linear_velocity_target,
             "lateral_velocity_target": self._lateral_velocity_target,
             "angular_velocity_target": self._angular_velocity_target,
+            "effective_angular_velocity_target": self._effective_angular_velocity_target,
             "goal_reached": self._goal_reached,
-            # "error_linear_velocity": self._task_data[:, 0],
-            # "error_lateral_velocity": self._task_data[:, 1],
-            "error_angular_velocity": self._task_data[:, 0],
+            "error_linear_velocity": self._err_lin_vel,
+            "error_lateral_velocity": self._err_lat_vel,
+            "error_angular_velocity": self._err_ang_vel,
         }
 
 
@@ -141,6 +148,12 @@ class TrackVelocitiesTask(TaskCore):
         self._convergence_step_count = torch.zeros((self._num_envs), device=self._device, dtype=torch.int32)
         # Convergence alpha (0 = spawn velocity, 1 = fully converged to target)
         self._convergence_alpha = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        # Ramped effective target (what the reward / error actually tracks at this step)
+        self._effective_angular_velocity_target = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        # Per-step velocity errors (exposed via eval_data for metrics / plots)
+        self._err_lin_vel = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        self._err_lat_vel = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        self._err_ang_vel = torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
 
     def get_observations(self) -> torch.Tensor:
         """
@@ -170,9 +183,9 @@ class TrackVelocitiesTask(TaskCore):
         # Increment convergence step counter and compute convergence alpha
         self._convergence_step_count += 1
         self._convergence_alpha = (self._convergence_step_count.float() / self._task_cfg.convergence_steps).clamp(0, 1)
-        effective_ang_vel_target = (
+        self._effective_angular_velocity_target = (
             (1 - self._convergence_alpha) * self._initial_angular_velocity
-            + self._convergence_alpha * self._angular_velocity_target 
+            + self._convergence_alpha * self._angular_velocity_target
         )
 
         # linear velocity error
@@ -180,7 +193,13 @@ class TrackVelocitiesTask(TaskCore):
         # lateral velocity error
         err_lat_vel = self._lateral_velocity_target - self._robot.root_com_lin_vel_b[:, 1]
         # Angular velocity error (uses ramped effective target)
-        err_ang_vel = effective_ang_vel_target - self._robot.root_com_ang_vel_w[:, 2]
+        err_ang_vel = self._effective_angular_velocity_target - self._robot.root_com_ang_vel_w[:, 2]
+
+        # Cache errors for eval_data / metrics (independent of what goes into the
+        # trimmed observation tensor below).
+        self._err_lin_vel = err_lin_vel
+        self._err_lat_vel = err_lat_vel
+        self._err_ang_vel = err_ang_vel
 
         # Store in buffer
         self._task_data[:, 0] = err_lin_vel * self._task_cfg.enable_linear_velocity

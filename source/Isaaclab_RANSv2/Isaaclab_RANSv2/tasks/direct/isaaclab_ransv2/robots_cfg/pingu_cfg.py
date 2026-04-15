@@ -127,8 +127,8 @@ class PinguRobotCfg(RobotCoreCfg):
     @property
     def action_space(self) -> int:
         if self.direct_thruster_control:
-            return 1 #4 # Only arms actions
-        return 1 #4 # Only arms actions
+            return 1 # Only RW
+        return 1 # Only RW
 
     @property
     def observation_space(self) -> int:

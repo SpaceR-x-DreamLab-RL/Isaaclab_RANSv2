@@ -21,7 +21,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Maximal linear velocity at spawn pose in m/s. Defaults to 0.0 m/s."""
     spawn_min_ang_vel: float = 0.2
     """Minimal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
-    spawn_max_ang_vel: float = 0.5
+    spawn_max_ang_vel: float = 1.5
     """Maximal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
 
     # Goal spawn
@@ -29,7 +29,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Enable linear velocity goal. Defaults to True."""
     goal_min_lin_vel: float = 0.0
     """Minimal linear velocity goal in m/s. Defaults to 0.0 m/s. (a random sign is added)"""
-    goal_max_lin_vel: float = 0.001
+    goal_max_lin_vel: float = 0.0
     """Maximal linear velocity goal in m/s. Defaults to 2.0 m/s. (a random sign is added)"""
     enable_lateral_velocity: bool = False
     """Enable lateral velocity goal. Defaults to False."""
@@ -60,6 +60,11 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     angular_velocity_tolerance: float = 0.05
     maximum_robot_distance: float = 1000.0  # should be plenty enough not to reset
     resample_after_steps_in_tolerance: int = 50
+
+    # Eval-only metric thresholds (not used by training/reward)
+    success_threshold_ang_vel: float = 0.005
+    """Body-frame |angular velocity| (rad/s) that defines 'converged' for eval metrics:
+    success rate (final step under threshold) and time-to-threshold."""
 
     # Reward Would be good to have a config for each reward type
     lin_vel_exponential_reward_coeff: float = 0.5
