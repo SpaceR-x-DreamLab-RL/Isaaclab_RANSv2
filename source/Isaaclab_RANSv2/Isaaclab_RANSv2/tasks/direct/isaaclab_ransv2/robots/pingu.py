@@ -274,7 +274,6 @@ class PinguRobot(RobotCore):
             arm_force_mag = torch.norm(arm_forces, dim=-1)  # (N, B)
             max_arm_force = torch.max(arm_force_mag, dim=-1)[0]  # (N,)
             arm_collision = (max_arm_force > self._robot_cfg.arm_collision_force_threshold).float()
-            print("arm collision", arm_collision)
             self.scalar_logger.log("robot_state", "AVG/arm_contact_force", max_arm_force)
             self.scalar_logger.log("robot_state", "SUM/arm_collision", arm_collision)
             self.scalar_logger.log(
