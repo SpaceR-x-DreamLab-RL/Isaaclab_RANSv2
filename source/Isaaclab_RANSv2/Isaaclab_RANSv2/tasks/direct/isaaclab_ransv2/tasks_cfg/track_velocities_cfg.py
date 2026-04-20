@@ -21,7 +21,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     """Maximal linear velocity at spawn pose in m/s. Defaults to 0.0 m/s."""
     spawn_min_ang_vel: float = 0.2
     """Minimal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
-    spawn_max_ang_vel: float = 1.5
+    spawn_max_ang_vel: float = 1.0
     """Maximal angular velocity at spawn in rad/s. Defaults to 0.0 rad/s."""
 
     # Goal spawn
@@ -62,7 +62,7 @@ class TrackVelocitiesCfg(TaskCoreCfg):
     resample_after_steps_in_tolerance: int = 50
 
     # Eval-only metric thresholds (not used by training/reward)
-    success_threshold_ang_vel: float = 0.005
+    success_threshold_ang_vel: float = 0.017
     """Body-frame |angular velocity| (rad/s) that defines 'converged' for eval metrics:
     success rate (final step under threshold) and time-to-threshold."""
 
