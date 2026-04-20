@@ -13,11 +13,11 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
     max_iterations = 2000
     save_interval = 1000
-    experiment_name = "AutoEnvGen_RNN"
+    experiment_name = "AutoEnvGen_PPO_Pingu_GoToPose_All_Actuators_RNN_DomRand_v2"
     logger = "wandb"
-    wandb_project = "AutoEnvGen_RNN"
+    wandb_project = "AutoEnvGen_PPO_Pingu_GoToPose_All_Actuators_RNN_DomRand_v2"
     wandb_kwargs = {
-        "project": "AutoEnvGen_RNN",
+        "project": "AutoEnvGen_PPO_Pingu_GoToPose_All_Actuators_RNN_DomRand_v2",
         "entity": "spacer-rl",
         "group": "zeroG",
     }

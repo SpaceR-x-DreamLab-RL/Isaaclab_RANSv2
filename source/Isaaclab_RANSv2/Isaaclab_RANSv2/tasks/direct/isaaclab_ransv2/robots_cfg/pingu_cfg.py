@@ -70,13 +70,13 @@ class PinguRobotCfg(RobotCoreCfg):
 
     # Randomization
     mass_rand_cfg: MassRandomizationCfg = MassRandomizationCfg(
-        enable=False, randomization_modes=["uniform"], body_name=root_id_name, max_delta=5.0
+        enable=True, randomization_modes=["uniform"], body_name=root_id_name, max_delta=5.0
     )
     com_rand_cfg: CoMRandomizationCfg = CoMRandomizationCfg(
-        enable=False, randomization_modes=["uniform"], body_name=root_id_name, max_delta=0.1
+        enable=True, randomization_modes=["uniform"], body_name=root_id_name, max_delta=0.1
     )
     wrench_rand_cfg = WrenchRandomizationCfg(
-        enable=False,
+        enable=True,
         randomization_modes=["constant_uniform"],
         body_name=root_id_name,
         uniform_force=(0, 1.0),
