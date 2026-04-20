@@ -416,14 +416,14 @@ class PinguRobot(RobotCore):
             )
             self._thrust_action = wp.to_torch(wp_thrust_action)
             
-        # Arms control: absolute position, actions in [-1, 1] mapped to [lower_limit, upper_limit]
-        # target = lower + (action * 0.5 + 0.5) * (upper - lower)
+        # Arms control: disabled for WaypointDocking training — arms stay at neutral (0 rad).
+        # Uncomment the block below to re-enable arm position control from actions.
         self._previous_arm_position_targets = self.arm_position_targets.clone()
-        alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
-        self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
-        self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
-        self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
-        self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
+        # alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
+        # self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
+        # self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
+        # self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
+        # self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
 
         if self._robot_cfg.has_reaction_wheel:
             dt = self.scene.physics_dt * 6.0
