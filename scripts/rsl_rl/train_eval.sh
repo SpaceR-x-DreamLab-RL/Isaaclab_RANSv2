@@ -4,13 +4,15 @@
 TASK_ENV="Isaaclab-RANSv2-AutoEnvGen-v0"
 ROBOT_NAME="Pingu"
 TASK_NAME="GoToPose"
-CUSTOM_PLOTS_LOG_NAME="PPO_Pingu_GoToPose_All_Actuators"
+CUSTOM_PLOTS_LOG_NAME="PPO_Pingu_GoToPose_All_Actuators_RNN_DomRand_v2"
 NUM_SEEDS=5
 NUM_EVAL_ENVS=128
 RUNS_PER_ENV=4 #Skip first reset on by default, technically n-1 runs per env
+AGENT="rsl_rl_rnn_cfg_entry_point" #rsl_rl_cfg_entry_point
+
 
 # Path to the PPO config (relative to project root)
-_PPO_CFG="source/Isaaclab_RANSv2/Isaaclab_RANSv2/tasks/direct/isaaclab_ransv2/agents/rsl_rl_ppo_cfg.py"
+_PPO_CFG="source/Isaaclab_RANSv2/Isaaclab_RANSv2/tasks/direct/isaaclab_ransv2/agents/rsl_rl_ppo-rnn_cfg.py"
 
 # Read experiment_name and max_iterations directly from the Python config
 EXPERIMENT_NAME=$(grep -m1 'experiment_name\s*=' "$_PPO_CFG" | sed "s/.*=\s*['\"]//;s/['\"].*//")
@@ -29,7 +31,7 @@ CHECKPOINT_ITER=$((MAX_ITERATIONS - 1))
 PYTHON_EXE="${ISAACSIM_ROOT_PATH}/python.sh"
 LOG_BASE_DIR="logs/rsl_rl/${EXPERIMENT_NAME}"
 
-TRAIN_ARGS="--task=${TASK_ENV} env.robot_name=${ROBOT_NAME} env.task_name=${TASK_NAME} --headless"
+TRAIN_ARGS="--task=${TASK_ENV} env.robot_name=${ROBOT_NAME} env.task_name=${TASK_NAME} --headless --agent=${AGENT}"
 EVAL_ARGS="--task=${TASK_ENV} --headless --num_envs=${NUM_EVAL_ENVS} --runs-per-env=${RUNS_PER_ENV} env.robot_name=${ROBOT_NAME} env.task_name=${TASK_NAME}"
 
 # ── Training ──────────────────────────────────────────────────────────────────
