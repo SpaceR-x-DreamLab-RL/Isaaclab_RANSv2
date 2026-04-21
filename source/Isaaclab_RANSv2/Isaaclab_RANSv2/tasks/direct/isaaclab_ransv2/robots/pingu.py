@@ -51,13 +51,11 @@ class PinguRobot(RobotCore):
         
     @property
     def eval_data_keys(self) -> list[str]:
-        return [
+        keys = [
             "position",
             "heading",
             "linear_velocity",
             "angular_velocity",
-            "reaction_wheel_action",
-            "omega_reaction_wheel",
             "thrust_action",
             "actions",
             "unaltered_actions",
@@ -66,17 +64,18 @@ class PinguRobot(RobotCore):
             "left_arm_velocity",
             "right_arm_velocity",
         ]
+        if self._robot_cfg.has_reaction_wheel:
+            keys.extend(["reaction_wheel_action", "omega_reaction_wheel"])
+        return keys
 
     @property
     def eval_data_specs(self)->dict[str, list[str]]:
         num_thrusters = self._robot_cfg.num_thrusters
-        return {
+        specs = {
             "position": [".robot_pos.x.m", ".robot_pos.y.m", ".robot_pos.z.m"],
             "heading": [".robot_heading.rad"],
             "linear_velocity": [".robot_lin_vel.x.m/s", ".robot_lin_vel.y.m/s", ".robot_lin_vel.z.m/s"],
             "angular_velocity": [".robot_ang_vel.x.rad/s", ".robot_ang_vel.y.rad/s", ".robot_ang_vel.z.rad/s"],
-            "reaction_wheel_action": [".reaction_wheel_action.u"],
-            "omega_reaction_wheel": [".omega_reaction_wheel.rad/s"],
             "thrust_action": [f".thruster{i}.force.N" for i in range(num_thrusters)],
             "actions": [f".robot_actions{i}.u" for i in range(self._robot_cfg.action_space)],
             "unaltered_actions": [f".robot_unaltered_actions{i}.u" for i in range(self._robot_cfg.action_space)],
@@ -85,16 +84,18 @@ class PinguRobot(RobotCore):
             "left_arm_velocity": [".left_shoulder.vel.rad/s", ".left_elbow.vel.rad/s"],
             "right_arm_velocity": [".right_shoulder.vel.rad/s", ".right_elbow.vel.rad/s"],
         }
+        if self._robot_cfg.has_reaction_wheel:
+            specs["reaction_wheel_action"] = [".reaction_wheel_action.u"]
+            specs["omega_reaction_wheel"] = [".omega_reaction_wheel.rad/s"]
+        return specs
 
     @property
     def eval_data(self) -> dict:
-        return {
+        data = {
             "position": self.root_pos_w,
             "heading": self.heading_w,
             "linear_velocity": self.root_lin_vel_b,
             "angular_velocity": self.root_ang_vel_b,
-            "reaction_wheel_action": self._reaction_wheel_action,
-            "omega_reaction_wheel": self.omega_reaction_wheel,
             "thrust_action": self._thrust_action[..., -1],
             "actions": self._actions,
             "unaltered_actions": self._unaltered_actions,
@@ -103,6 +104,10 @@ class PinguRobot(RobotCore):
             "left_arm_velocity": self._robot.data.joint_vel[:, self._left_levionarm_dof_idx],
             "right_arm_velocity": self._robot.data.joint_vel[:, self._right_levionarm_dof_idx],
         }
+        if self._robot_cfg.has_reaction_wheel:
+            data["reaction_wheel_action"] = self._reaction_wheel_action
+            data["omega_reaction_wheel"] = self.omega_reaction_wheel
+        return data
 
     def initialize_buffers(self, env_ids=None):
         super().initialize_buffers(env_ids)
@@ -425,7 +430,7 @@ class PinguRobot(RobotCore):
         # self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
         # self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
         
-        self.arm_position_targets[:] = 1.0 # Fix arms position, naviagtion only with thrusters and reaction wheel
+        self.arm_position_targets[:] = 0.0 # Fix arms position, naviagtion only with thrusters and reaction wheel
         
         
         if self._robot_cfg.has_reaction_wheel:

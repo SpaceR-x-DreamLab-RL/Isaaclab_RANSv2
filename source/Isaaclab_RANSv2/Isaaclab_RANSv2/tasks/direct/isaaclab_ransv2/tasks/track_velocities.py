@@ -441,8 +441,9 @@ class TrackVelocitiesTask(TaskCore):
 
         # Linear velocity
         velocity_norm = (
-            self._gen_actions[env_ids, 3] * (self._task_cfg.spawn_max_lin_vel - self._task_cfg.spawn_min_lin_vel)
-            + self._task_cfg.spawn_min_lin_vel
+            self._rng.sample_sign_torch("float", 1, ids=env_ids)
+            * (self._gen_actions[env_ids, 3] * (self._task_cfg.spawn_max_lin_vel - self._task_cfg.spawn_min_lin_vel)
+            + self._task_cfg.spawn_min_lin_vel)
         )
         theta = self._rng.sample_uniform_torch(0.0, 2 * math.pi, 1, ids=env_ids)
         initial_velocity[:, 0] = velocity_norm * torch.cos(theta)
@@ -450,8 +451,10 @@ class TrackVelocitiesTask(TaskCore):
 
         # Angular velocity of the platform
         angular_velocity = (
-            self._gen_actions[env_ids, 4] * (self._task_cfg.spawn_max_ang_vel - self._task_cfg.spawn_min_ang_vel)
-            + self._task_cfg.spawn_min_ang_vel
+            self._rng.sample_sign_torch("float", 1, ids=env_ids)
+            * (self._gen_actions[env_ids, 4]
+            * (self._task_cfg.spawn_max_ang_vel - self._task_cfg.spawn_min_ang_vel)
+            + self._task_cfg.spawn_min_ang_vel)
         )
         initial_velocity[:, 5] = angular_velocity
 

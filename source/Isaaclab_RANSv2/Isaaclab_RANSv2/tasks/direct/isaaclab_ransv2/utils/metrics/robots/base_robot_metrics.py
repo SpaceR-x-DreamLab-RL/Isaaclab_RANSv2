@@ -1,5 +1,54 @@
 import torch
 
+
+def _expand_runs(trajectories: dict, cutoff_indices: torch.Tensor) -> tuple[dict, torch.Tensor]:
+    """Reshape (num_envs, total_steps) → (num_envs * num_runs, max_run_len).
+
+    Each run becomes an independent row so per-run metrics are computed correctly
+    when num_runs_per_env > 1.
+
+    cutoff_indices[env, run] is the exclusive end step (the done step) for that run.
+    """
+    if cutoff_indices.ndim == 1:
+        cutoff_indices = cutoff_indices.unsqueeze(1)
+
+    num_envs, num_runs = cutoff_indices.shape
+    device = cutoff_indices.device
+
+    starts = torch.cat([
+        torch.zeros(num_envs, 1, dtype=torch.long, device=device),
+        cutoff_indices[:, :-1],
+    ], dim=1)
+
+    run_lens = (cutoff_indices - starts).clamp(min=0)
+    max_run_len = int(run_lens.max().item())
+    total_rows = num_envs * num_runs
+
+    if max_run_len == 0:
+        expanded = {k: torch.zeros(total_rows, 1, *v.shape[2:], dtype=v.dtype, device=device)
+                    for k, v in trajectories.items()}
+        return expanded, torch.zeros(total_rows, 1, dtype=torch.bool, device=device)
+
+    expanded: dict = {}
+    for k, v in trajectories.items():
+        expanded[k] = torch.zeros(total_rows, max_run_len, *v.shape[2:], dtype=v.dtype, device=device)
+    expanded_masks = torch.zeros(total_rows, max_run_len, dtype=torch.bool, device=device)
+
+    for env_idx in range(num_envs):
+        for run_idx in range(num_runs):
+            row = env_idx * num_runs + run_idx
+            start = int(starts[env_idx, run_idx].item())
+            end = int(cutoff_indices[env_idx, run_idx].item())
+            rlen = end - start
+            if rlen <= 0:
+                continue
+            for k, v in trajectories.items():
+                expanded[k][row, :rlen] = v[env_idx, start:end]
+            expanded_masks[row, :rlen] = True
+
+    return expanded, expanded_masks
+
+
 class AutoRegister:
     def __init_subclass__(cls, **kwargs):
         """Ensure each subclass gets its own independent registry."""
@@ -44,15 +93,16 @@ class BaseRobotMetrics(AutoRegister):
         pass
 
     def generate_metrics(
-            self, 
-            trajectories: dict, 
+            self,
+            trajectories: dict,
             cutoff_indices: torch.Tensor,
-            trajectories_masks: torch.Tensor, 
+            trajectories_masks: torch.Tensor,
         ) -> None:
 
-        self.trajectories = trajectories
-        self.cutoff_indices = cutoff_indices - 1
-        self.trajectories_masks = trajectories_masks
+        expanded_traj, expanded_masks = _expand_runs(trajectories, cutoff_indices)
+        self.trajectories = expanded_traj
+        self.trajectories_masks = expanded_masks
+        self.cutoff_indices = expanded_masks.sum(dim=1) - 1
 
         for metric_fnc in self.get_registered_methods().values():
             metric_fnc(self)
