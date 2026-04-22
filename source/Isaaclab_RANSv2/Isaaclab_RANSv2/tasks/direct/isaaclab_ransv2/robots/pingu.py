@@ -608,7 +608,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the position of the actor frame of the articulation root.
         """
-        return self._robot.data.body_pos_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_pos_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_quat_w(self) -> torch.Tensor:
@@ -616,7 +616,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the articulation root.
         """
-        return self._robot.data.body_quat_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_quat_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_vel_w(self) -> torch.Tensor:
@@ -625,7 +625,7 @@ class PinguRobot(RobotCore):
         This quantity contains the linear and angular velocities of the articulation root's center of
         mass frame.
         """
-        return self._robot.data.body_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_lin_vel_w(self) -> torch.Tensor:
@@ -633,7 +633,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the linear velocity of the articulation root's center of mass frame.
         """
-        return self._robot.data.body_lin_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_lin_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_ang_vel_w(self) -> torch.Tensor:
@@ -641,7 +641,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the angular velocity of the articulation root's center of mass frame.
         """
-        return self._robot.data.body_ang_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_ang_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_lin_vel_b(self) -> torch.Tensor:
@@ -671,7 +671,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the position of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_link_pos_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_link_quat_w(self) -> torch.Tensor:
@@ -679,7 +679,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body.
         """
-        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_link_quat_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_link_vel_w(self) -> torch.Tensor:
@@ -687,7 +687,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the linear velocity of the root rigid body's actor frame relative to the world.
         """
-        return self._robot.data.body_link_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_link_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_link_lin_vel_w(self) -> torch.Tensor:
@@ -695,7 +695,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the linear velocity of the root rigid body's actor frame relative to the world.
         """
-        return self._robot.data.body_link_lin_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_link_lin_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_link_ang_vel_w(self) -> torch.Tensor:
@@ -703,7 +703,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the angular velocity of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_link_ang_vel_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_link_ang_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_link_lin_vel_b(self) -> torch.Tensor:
@@ -733,7 +733,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the position of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_com_pos_w[:, self._root_idx].squeeze()
+        return self._robot.data.body_com_pos_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_com_quat_w(self) -> torch.Tensor:
@@ -741,7 +741,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the orientation of the actor frame of the root rigid body relative to the world.
         """
-        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_com_quat_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_com_vel_w(self) -> torch.Tensor:
@@ -749,7 +749,7 @@ class PinguRobot(RobotCore):
 
         This quantity contains the linear and angular velocities of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_com_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_com_lin_vel_w(self) -> torch.Tensor:
@@ -757,7 +757,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the linear velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_com_lin_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_com_ang_vel_w(self) -> torch.Tensor:
@@ -765,7 +765,7 @@ class PinguRobot(RobotCore):
 
         This quantity is the angular velocity of the root rigid body's center of mass frame relative to the world.
         """
-        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze() #
+        return self._robot.data.body_com_ang_vel_w[:, self._root_idx].squeeze(1)
 
     @property
     def root_com_lin_vel_b(self) -> torch.Tensor:

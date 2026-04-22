@@ -48,6 +48,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
     git-lfs \
     libglib2.0-0 \
     ncurses-term \
+    python3 \
+    python3-venv \
     wget && \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/*
@@ -112,6 +114,27 @@ RUN if [[ "${DEV,,}" = true && "${RSL_RL_DEV,,}" = true ]]; then \
     "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir --editable "${RSL_RL_PATH}" ; \
     fi
 
+## DreamerV3 — isolated venv to keep JAX separate from Isaac Sim's PyTorch
+ARG DREAMER_DEV=false
+ARG DREAMER_PATH="/root/dreamerv3"
+ARG DREAMER_REMOTE="https://github.com/AndrejOrsula/dreamerv3.git"
+ARG DREAMER_BRANCH="main"
+ARG DREAMER_COMMIT_SHA="4049794d4135e41c691f18da38a9af7541b01553" # 2025-07-16
+ARG DREAMER_VENV="/opt/dreamer_venv"
+# Install pyzmq into Isaac Sim's Python so the sim-server side can use it
+RUN "${ISAAC_SIM_PYTHON}" -m pip install --no-input --no-cache-dir pyzmq
+# Clone DreamerV3 and install into its own venv (keeps JAX out of Isaac Sim's Python)
+RUN if [[ "${DEV,,}" = true && "${DREAMER_DEV,,}" = true ]]; then \
+    git clone "${DREAMER_REMOTE}" "${DREAMER_PATH}" --branch "${DREAMER_BRANCH}" && \
+    git -C "${DREAMER_PATH}" reset --hard "${DREAMER_COMMIT_SHA}" && \
+    sed -i '1s/^/import elements\n/' "${DREAMER_PATH}/embodied/envs/from_gymnasium.py" && \
+    python3 -m venv "${DREAMER_VENV}" && \
+    "${DREAMER_VENV}/bin/pip" install --no-cache-dir --upgrade pip && \
+    "${DREAMER_VENV}/bin/pip" install --no-cache-dir pyzmq gymnasium numpy wandb && \
+    "${DREAMER_VENV}/bin/pip" install --no-cache-dir --editable "${DREAMER_PATH}" ; \
+    fi
+ENV DREAMER_VENV=${DREAMER_VENV}
+ENV DREAMER_PATH=${DREAMER_PATH}
 
 # for singularity usage, have to create the directories that will binded
 RUN mkdir -p ${ISAACSIM_ROOT_PATH}/kit/cache && \

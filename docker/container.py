@@ -117,6 +117,9 @@ def main(args: argparse.Namespace):
             (x11_yaml, x11_envar) = x11_outputs
             ci.add_yamls += x11_yaml
             ci.environ.update(x11_envar)
+        # ask whether to include DreamerV3 (MBRL) in the build
+        dreamer_reply = input("[INFO] Include DreamerV3 (MBRL) in this build? [y/N]: ").strip().lower()
+        ci.environ["DREAMER_DEV"] = "true" if dreamer_reply in ("y", "yes") else "false"
         # start the container
         ci.start()
     elif args.command == "enter":
