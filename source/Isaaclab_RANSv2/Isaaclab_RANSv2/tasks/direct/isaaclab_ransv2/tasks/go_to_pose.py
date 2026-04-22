@@ -401,14 +401,7 @@ class GoToPoseTask(TaskCore):
         ) * self._rng.sample_sign_torch("float", 1, ids=env_ids)
         theta = sampled_heading + self._target_headings[env_ids]
         initial_pose[:, 3] = torch.cos(theta * 0.5)
-        initial_pose[:, 6] = torch.sin(theta * 0.5) 
-        
-        # Debug set inital position and orientation same as the target
-        initial_pose[:, 0] = self._target_positions[env_ids, 0]
-        initial_pose[:, 1] = self._target_positions[env_ids, 1]
-        initial_pose[:, 3] = torch.cos(self._target_headings[env_ids] * 0.5)
-        initial_pose[:, 6] = torch.sin(self._target_headings[env_ids] * 0.5)
-        
+        initial_pose[:, 6] = torch.sin(theta * 0.5)
 
         # Randomizes the velocity of the platform
         initial_velocity = torch.zeros((num_resets, 6), device=self._device, dtype=torch.float32)
@@ -419,15 +412,15 @@ class GoToPoseTask(TaskCore):
             + self._task_cfg.spawn_min_lin_vel
         )
         theta = self._rng.sample_uniform_torch(0, math.pi * 2, 1, ids=env_ids)
-        initial_velocity[:, 0] = velocity_norm * torch.cos(theta) * 0.0 # Debug set linear velocity to 0
-        initial_velocity[:, 1] = velocity_norm * torch.sin(theta) * 0.0 # Debug set linear velocity to 0
+        initial_velocity[:, 0] = velocity_norm * torch.cos(theta)
+        initial_velocity[:, 1] = velocity_norm * torch.sin(theta)
 
         # Angular velocity of the platform
         angular_velocity = (
             self._gen_actions[env_ids, 4] * (self._task_cfg.spawn_max_ang_vel - self._task_cfg.spawn_min_ang_vel)
             + self._task_cfg.spawn_min_ang_vel
         )
-        initial_velocity[:, 5] = angular_velocity * 0.0 # Debug set angular velocity to 0
+        initial_velocity[:, 5] = angular_velocity
 
         # Apply to articulation
         self._robot.set_pose(initial_pose, env_ids)
