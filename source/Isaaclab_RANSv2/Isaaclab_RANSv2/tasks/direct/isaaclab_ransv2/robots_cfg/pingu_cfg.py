@@ -76,7 +76,7 @@ class PinguRobotCfg(RobotCoreCfg):
         enable=False, randomization_modes=["uniform"], body_name=root_id_name, max_delta=0.1
     )
     wrench_rand_cfg = WrenchRandomizationCfg(
-        enable=True,
+        enable=False,
         randomization_modes=["constant_uniform"],
         body_name=root_id_name,
         uniform_force=(0, 1.0),
