@@ -444,6 +444,9 @@ class PinguRobot(RobotCore):
         # self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
         # self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
         # self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
+        
+        self.arm_position_targets[:] = 0.0
+        
 
         if self._robot_cfg.has_reaction_wheel:
             dt = self.scene.physics_dt * 6.0

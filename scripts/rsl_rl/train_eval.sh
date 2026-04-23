@@ -8,11 +8,11 @@ CUSTOM_PLOTS_LOG_NAME="PPO_${ROBOT_NAME}_${TASK_NAME}_Plots"
 NUM_SEEDS=4
 NUM_EVAL_ENVS=128
 RUNS_PER_ENV=4 #Skip first reset on by default, technically n-1 runs per env
-AGENT="rsl_rl_rnn_cfg_entry_point" #rsl_rl_cfg_entry_point
+AGENT= "rsl_rl_cfg_entry_point" #"rsl_rl_rnn_cfg_entry_point" #rsl_rl_cfg_entry_point
 
 
 # Path to the PPO config (relative to project root)
-_PPO_CFG="source/Isaaclab_RANSv2/Isaaclab_RANSv2/tasks/direct/isaaclab_ransv2/agents/rsl_rl_ppo-rnn_cfg.py"
+_PPO_CFG="source/Isaaclab_RANSv2/Isaaclab_RANSv2/tasks/direct/isaaclab_ransv2/agents/rsl_rl_ppo_cfg.py"
 
 # Read experiment_name and max_iterations directly from the Python config
 EXPERIMENT_NAME=$(grep -m1 'experiment_name\s*=' "$_PPO_CFG" | sed "s/.*=\s*['\"]//;s/['\"].*//")
