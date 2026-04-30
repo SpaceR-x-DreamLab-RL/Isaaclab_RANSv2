@@ -24,11 +24,11 @@ class TrackVelocitiesMetrics(BaseTaskMetrics, Registerable):
     def _angular_velocity(self) -> torch.Tensor:
         """Robot chassis angular velocity around z (rad/s), body frame.
 
-        Sourced from the robot's eval_data 'angular_velocity' (= root_com_ang_vel_b),
+        Sourced from the robot's eval_data 'angular_velocity_w' (= root_com_ang_vel_b),
         which is the root rigid body (chassis) — explicitly NOT the reaction wheel
         (reaction wheel speed is exposed separately as 'omega_reaction_wheel').
         """
-        return self.trajectories['angular_velocity'][..., 2]
+        return self.trajectories['angular_velocity_w'][..., 2]
 
     @BaseTaskMetrics.register
     def time_to_half_initial_angular_velocity(self):

@@ -13,11 +13,11 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
     max_iterations = 1000
     save_interval = 500
-    experiment_name = "AutoEnvGen_PPO_Pingu_Stabilization_RW_A0"
+    experiment_name = "AutoEnvGen_PPO_Pingu_Stabilization_v3_RW_A0"
     logger = "wandb"
-    wandb_project = "AutoEnvGen_PPO_Pingu_Stabilization_RW_A0"
+    wandb_project = "AutoEnvGen_PPO_Pingu_Stabilization_v3_RW_A0"
     wandb_kwargs = {
-        "project": "AutoEnvGen_PPO_Pingu_Stabilization_RW_A0",
+        "project": "AutoEnvGen_PPO_Pingu_Stabilization_v3_RW_A0",
         "entity": "spacer-rl",
         "group": "zeroG",
     }
