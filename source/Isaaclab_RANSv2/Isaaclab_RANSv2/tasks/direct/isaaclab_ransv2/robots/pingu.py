@@ -261,25 +261,25 @@ class PinguRobot(RobotCore):
             reward = reward + rw_usage * self._robot_cfg.rew_reaction_wheel_usage_scale
 
         # --- Arm action rate: penalize rapid arm target changes (vibration/jerk) ---
-        arm_action_rate = torch.sum(torch.abs(self.arm_position_targets - self._previous_arm_position_targets), dim=-1)
-        self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
-        self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
-        reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
+        # arm_action_rate = torch.sum(torch.abs(self.arm_position_targets - self._previous_arm_position_targets), dim=-1)
+        # self.scalar_logger.log("robot_state", "AVG/arm_action_rate", arm_action_rate)
+        # self.scalar_logger.log("robot_reward", "AVG/arm_action_rate", arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale)
+        # reward = reward + arm_action_rate * self._robot_cfg.rew_arm_action_rate_scale
 
         # --- Arm collision: penalize any contact on the arm links ---
         # net_forces_w has shape (num_envs, num_bodies, 3). Take the max over bodies
         # of the force magnitude so a single colliding arm triggers the penalty.
-        arm_forces = self.arm_contacts.data.net_forces_w  # (N, B, 3)
-        if arm_forces is not None:
-            arm_force_mag = torch.norm(arm_forces, dim=-1)  # (N, B)
-            max_arm_force = torch.max(arm_force_mag, dim=-1)[0]  # (N,)
-            arm_collision = (max_arm_force > self._robot_cfg.arm_collision_force_threshold).float()
-            self.scalar_logger.log("robot_state", "AVG/arm_contact_force", max_arm_force)
-            self.scalar_logger.log("robot_state", "SUM/arm_collision", arm_collision)
-            self.scalar_logger.log(
-                "robot_reward", "AVG/arm_collision", arm_collision * self._robot_cfg.rew_arm_collision_scale
-            )
-            reward = reward + arm_collision * self._robot_cfg.rew_arm_collision_scale
+        # arm_forces = self.arm_contacts.data.net_forces_w  # (N, B, 3)
+        # if arm_forces is not None:
+        #     arm_force_mag = torch.norm(arm_forces, dim=-1)  # (N, B)
+        #     max_arm_force = torch.max(arm_force_mag, dim=-1)[0]  # (N,)
+        #     arm_collision = (max_arm_force > self._robot_cfg.arm_collision_force_threshold).float()
+        #     self.scalar_logger.log("robot_state", "AVG/arm_contact_force", max_arm_force)
+        #     self.scalar_logger.log("robot_state", "SUM/arm_collision", arm_collision)
+        #     self.scalar_logger.log(
+        #         "robot_reward", "AVG/arm_collision", arm_collision * self._robot_cfg.rew_arm_collision_scale
+        #     )
+        #     reward = reward + arm_collision * self._robot_cfg.rew_arm_collision_scale
 
         # --- Arm symmetry: penalize left/right asymmetry (floating platform angular momentum bias) ---
         # arm_position_targets: [left_shoulder, left_elbow, right_shoulder, right_elbow]
@@ -418,13 +418,15 @@ class PinguRobot(RobotCore):
             
         # Arms control: absolute position, actions in [-1, 1] mapped to [lower_limit, upper_limit]
         # target = lower + (action * 0.5 + 0.5) * (upper - lower)
-        self._previous_arm_position_targets = self.arm_position_targets.clone()
-        alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
-        self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
-        self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
-        self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
-        self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
+        # self._previous_arm_position_targets = self.arm_position_targets.clone()
+        # alpha = actions[:, thrust_dim:thrust_dim + 4] * 0.5 + 0.5  # remap [-1,1] -> [0,1]
+        # self.arm_position_targets[:, 0] = self._shoulder_lower_limit + alpha[:, 0] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Left shoulder
+        # self.arm_position_targets[:, 1] = self._left_elbow_lower_limit + alpha[:, 1] * (self._left_elbow_upper_limit - self._left_elbow_lower_limit)  # Left elbow
+        # self.arm_position_targets[:, 2] = self._shoulder_lower_limit + alpha[:, 2] * (self._shoulder_upper_limit - self._shoulder_lower_limit)  # Right shoulder
+        # self.arm_position_targets[:, 3] = self._right_elbow_lower_limit + alpha[:, 3] * (self._right_elbow_upper_limit - self._right_elbow_lower_limit)  # Right elbow
 
+        self.arm_position_targets[:] = 1.0
+        
         if self._robot_cfg.has_reaction_wheel:
             dt = self.scene.physics_dt * 6.0
             commanded_torque = (actions[:, -1] * self._robot_cfg.reaction_wheel_scale).unsqueeze(-1)
