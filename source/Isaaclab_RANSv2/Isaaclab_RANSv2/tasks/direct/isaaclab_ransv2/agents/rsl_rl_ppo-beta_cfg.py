@@ -5,39 +5,33 @@
 
 from isaaclab.utils import configclass
 
-from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg, RslRlRNNModelCfg
+from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 2000
-    save_interval = 1000
-    experiment_name = "AutoEnvGen_RNN"
+    max_iterations = 1000
+    save_interval = 500
+    experiment_name = "AutoEnvGen_PPO"
     logger = "wandb"
-    wandb_project = "AutoEnvGen_RNN"
+    wandb_project = "AutoEnvGen_PPO"
     wandb_kwargs = {
-        "project": "AutoEnvGen_RNN",
+        "project": "AutoEnvGen_PPO",
         "entity": "spacer-rl",
         "group": "zeroG",
     }
     obs_groups = {"actor": ["policy"], "critic": ["policy"]}
-    actor = RslRlRNNModelCfg(
-        hidden_dims=[64, 64],
-        activation="tanh",
+    actor = RslRlMLPModelCfg(
+        hidden_dims=[32, 32],
+        activation="elu",
         obs_normalization=False,
-        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=1.0),
-        rnn_type="gru",
-        rnn_hidden_dim=64,
-        rnn_num_layers=1,
+        distribution_cfg=RslRlMLPModelCfg.BetaDistributionCfg(action_range=(0.0, 1.0)),
     )
-    critic = RslRlRNNModelCfg(
-        hidden_dims=[64, 64],
-        activation="tanh",
+    critic = RslRlMLPModelCfg(
+        hidden_dims=[32, 32],
+        activation="elu",
         obs_normalization=False,
-        rnn_type="gru",
-        rnn_hidden_dim=64,
-        rnn_num_layers=1,
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,

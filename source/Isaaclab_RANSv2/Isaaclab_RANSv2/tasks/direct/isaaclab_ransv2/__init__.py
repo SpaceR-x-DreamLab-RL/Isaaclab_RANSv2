@@ -22,6 +22,7 @@ gym.register(
         "rl_games_ppo-discrete_cfg_entry_point": f"{agents.__name__}:rl_games_ppo-discrete_cfg.yaml",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
         "rsl_rl_rnn_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo-rnn_cfg:PPORunnerCfg",
+        "rsl_rl_beta_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo-beta_cfg:PPORunnerCfg",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_cfg.yaml",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
         "skrl_ppo-discrete_cfg_entry_point": f"{agents.__name__}:skrl_ppo-discrete_cfg.yaml",

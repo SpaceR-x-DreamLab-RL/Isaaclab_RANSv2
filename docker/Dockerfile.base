@@ -77,7 +77,7 @@ ARG ISAACLAB_DEV=true
 # ARG ISAACLAB_PATH="/root/isaaclab"
 ARG ISAACLAB_REMOTE="https://github.com/SpaceR-x-DreamLab-RL/Isaaclab.git"
 ARG ISAACLAB_BRANCH="main"
-ARG ISAACLAB_COMMIT_SHA="3c1b8c21af627e5ed7ceba9f826eda2505c3f48a" #IsaacLab v2.2.0 / SpaceR release v0.0.4 Contact Sensors
+ARG ISAACLAB_COMMIT_SHA="5d7983a56688e2e3fc99310f21b99c726e0048d4" #IsaacLab v2.2.0 / SpaceR release 0.0.4 rsl_rl 5.2.0 beta distribution
 # hadolint ignore=SC2044
 ENV TERM=xterm-256color
 RUN if [[ "${DEV,,}" = true && "${ISAACLAB_DEV,,}" = true ]]; then \
@@ -103,9 +103,9 @@ RUN wget -O /tmp/spacer-dreamlab-assets.zip "${ASSETS_URL}" && \
 ## Reinforcement Learning
 ARG RSL_RL_DEV=true
 ARG RSL_RL_PATH="/root/rsl_rl"
-ARG RSL_RL_REMOTE="https://github.com/leggedrobotics/rsl_rl.git"
-ARG RSL_RL_BRANCH="main"
-ARG RSL_RL_COMMIT_SHA="91c7554e67f7f9c39fbcddf46fb42b82c07f4144" # rsl_rl v3.3.0
+ARG RSL_RL_REMOTE="https://github.com/ClemensSchwarke/rsl_rl"
+ARG RSL_RL_BRANCH="feature/beta_distribution"
+ARG RSL_RL_COMMIT_SHA="806857765d4bdb20d682aba6b06e4b202f3ae4fa" # rsl_rl v5.2.0 + beta #**# "91c7554e67f7f9c39fbcddf46fb42b82c07f4144" # rsl_rl v3.3.0
 RUN if [[ "${DEV,,}" = true && "${RSL_RL_DEV,,}" = true ]]; then \
     git clone "${RSL_RL_REMOTE}" "${RSL_RL_PATH}" --branch "${RSL_RL_BRANCH}" && \
     git -C "${RSL_RL_PATH}" reset --hard "${RSL_RL_COMMIT_SHA}" && \
