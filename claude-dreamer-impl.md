@@ -648,7 +648,100 @@ ValueError: Value for 'reward' with dtype float32, shape (1,), ... is not in Spa
 
 ---
 
-## 11. File Map
+## 11. Evaluation and Visualization
+
+DreamerV3 training produces three artefacts that can be used independently.
+
+### A. TensorBoard (live, during training)
+
+DreamerV3 writes TensorBoard events to `{logdir}/` automatically. Run from **inside the container**:
+
+```bash
+# Option 1 – dreamer venv (no extra install needed)
+${DREAMER_VENV}/bin/python -m tensorboard.main --logdir logs/dreamer/pingu_gotoPose --bind_all
+
+# Option 2 – Isaac Sim Python (if tensorboard is there)
+${ISAAC_SIM_PYTHON} -m tensorboard.main --logdir logs/dreamer/pingu_gotoPose --bind_all
+```
+
+Then open `http://localhost:6006` in a browser on the host.
+
+Key scalar tags:
+| Tag | Meaning |
+|-----|---------|
+| `episode/score` | Total episode return (primary reward signal) |
+| `episode/length` | Steps per episode |
+| `train/model_loss` | World model prediction loss |
+| `train/actor_loss` | Actor (policy) loss in imagined rollouts |
+| `train/critic_loss` | Critic (value) loss |
+| `log/*` | Isaac Lab task/robot metrics (forwarded via ZMQ bridge) |
+
+### B. metrics.jsonl (post-hoc analysis)
+
+DreamerV3 appends one JSON object per logging interval to `{logdir}/metrics.jsonl`. Parse with pandas:
+
+```python
+import pandas as pd
+
+df = pd.read_json("logs/dreamer/pingu_gotoPose/metrics.jsonl", lines=True)
+df = df.sort_values("step").reset_index(drop=True)
+
+# Episode reward over time
+df[["step", "episode/score"]].dropna().plot(x="step", y="episode/score")
+
+# Task-specific metrics forwarded from Isaac Lab (if log/ keys are present)
+log_cols = [c for c in df.columns if c.startswith("log/")]
+df[["step"] + log_cols].dropna().plot(x="step")
+```
+
+Run this from the **host** or any Python environment with pandas/matplotlib — no JAX or Isaac Sim needed.
+
+### C. play.py — live policy evaluation with rendering
+
+Runs the trained policy in the real sim (no training, checkpoint only). Isaac Sim GUI shows the robot moving.
+
+**Window 1 — sim server (with GUI):**
+```bash
+${ISAAC_SIM_PYTHON} scripts/dreamer/sim_server.py \
+    --robot Pingu \
+    --task-name GoToPose \
+    --num_envs 1 \
+    --socket /tmp/isaaclab_dreamer.sock
+# NOTE: no --headless → Isaac Sim opens a window
+```
+
+**Window 2 — eval:**
+```bash
+${DREAMER_VENV}/bin/python scripts/dreamer/play.py \
+    --logdir logs/dreamer/pingu_gotoPose \
+    --episodes 10 \
+    --configs defaults size12m \
+    --socket /tmp/isaaclab_dreamer.sock
+```
+
+`play.py` uses DreamerV3's `eval_only` mode — loads the checkpoint from `--logdir`, runs N episodes, then exits. Episodes and scores are printed to stdout.
+
+### D. Comparing with RSL-RL PPO
+
+The cleanest comparison is episode return vs. environment steps. DreamerV3 logs `episode/score` at each episode; RSL-RL logs `Train/mean_reward` per iteration (each iteration = ~16 k env steps with 4096 envs).
+
+```python
+# dreamer
+df_d = pd.read_json("logs/dreamer/pingu_gotoPose/metrics.jsonl", lines=True)
+dreamer = df_d[["step", "episode/score"]].dropna().rename(columns={"episode/score": "return"})
+
+# rsl_rl — reads tensorboard event file
+# pip install tensorboard
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+ea = EventAccumulator("logs/rsl_rl/Isaaclab-RANSv2-AutoEnvGen-v0/<run_dir>")
+ea.Reload()
+scalars = ea.Scalars("Train/mean_reward")
+ppo = pd.DataFrame([(s.step * 4096 * 16, s.value) for s in scalars], columns=["step", "return"])
+```
+
+---
+
+## 12. File Map
 
 ```
 Isaaclab_RANSv2/
@@ -659,7 +752,8 @@ Isaaclab_RANSv2/
 ├── scripts/
 │   └── dreamer/               ← NEW
 │       ├── sim_server.py      ← Isaac Sim launch + ZMQ server (run with ${ISAAC_SIM_PYTHON})
-│       └── train.py           ← DreamerV3 training entry point (run with ${DREAMER_VENV}/bin/python)
+│       ├── train.py           ← DreamerV3 training entry point (run with ${DREAMER_VENV}/bin/python)
+│       └── play.py            ← Eval-only: load checkpoint, run N episodes with GUI rendering
 └── source/Isaaclab_RANSv2/Isaaclab_RANSv2/tasks/direct/isaaclab_ransv2/
     ├── robots/
     │   └── pingu.py           ← MODIFIED: 15× .squeeze() → .squeeze(1) (fixes num_envs=1 shape bug)
