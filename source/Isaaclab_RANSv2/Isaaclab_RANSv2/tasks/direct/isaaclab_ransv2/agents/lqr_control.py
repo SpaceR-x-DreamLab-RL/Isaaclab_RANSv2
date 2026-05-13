@@ -44,7 +44,7 @@ def lqr_control_kernel(
     x7 = integral_states[tid, 1]
     x8 = integral_states[tid, 2]
 
-    for i in range(4):
+    for i in range(3):
         u = -(
             K[i, 0] * x0
             + K[i, 1] * x1
@@ -67,7 +67,7 @@ def lqr_control_kernel(
     # commands[tid, 0] = 0.0
     # commands[tid, 1] = 0.0
     # commands[tid, 2] = 0.0
-    # commands[tid, 3] = 0.0
+    commands[tid, 3] = 0.0
 
 
 class LQRController:
@@ -81,8 +81,8 @@ class LQRController:
         self.num_envs = num_envs
 
         k_np = np.loadtxt(gain_matrix_path, delimiter=",", dtype=np.float32)
-        if k_np.shape != (4, 9):
-            raise ValueError(f"Expected K matrix shape (4, 9), got {k_np.shape}")
+        if k_np.shape != (3, 9):
+            raise ValueError(f"Expected K matrix shape (3, 9), got {k_np.shape}")
 
         self.K = wp.array2d(k_np, dtype=wp.float32, device=self.device)
         self.integral_states = wp.zeros((self.num_envs, 3), dtype=wp.float32, device=self.device)
